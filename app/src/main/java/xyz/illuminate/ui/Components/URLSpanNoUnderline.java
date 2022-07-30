@@ -1,0 +1,53 @@
+package xyz.illuminate.ui.Components;
+
+import android.net.Uri;
+import android.text.TextPaint;
+import android.text.style.URLSpan;
+import android.view.View;
+
+import xyz.illuminate.server.TLObject;
+
+public class URLSpanNoUnderline extends URLSpan {
+
+    private final TextStyleSpan.TextStyleRun style;
+    private TLObject object;
+
+    public URLSpanNoUnderline(String url) {
+        this(url, null);
+    }
+
+    public URLSpanNoUnderline(String url, TextStyleSpan.TextStyleRun run) {
+        super(url != null ? url.replace('\u202E', ' ') : url);
+        style = run;
+    }
+
+    @Override
+    public void onClick(View widget) {
+        String url = getURL();
+        if (url.startsWith("@")) {
+            Uri uri = Uri.parse("https://t.me/" + url.substring(1));
+            //Browser.openUrl(widget.getContext(), uri);
+        } else {
+            // Browser.openUrl(widget.getContext(), url);
+        }
+    }
+
+    @Override
+    public void updateDrawState(TextPaint p) {
+        int l = p.linkColor;
+        int c = p.getColor();
+        super.updateDrawState(p);
+        if (style != null) {
+            style.applyStyle(p);
+        }
+        p.setUnderlineText(l == c);
+    }
+
+    public TLObject getObject() {
+        return object;
+    }
+
+    public void setObject(TLObject spanObject) {
+        this.object = spanObject;
+    }
+}

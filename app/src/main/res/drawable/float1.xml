@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/cardview_light_background">
+    <item>
+        <shape>
+            <solid android:color="#ff205EFF" />
+            <corners
+                android:bottomLeftRadius="3dp"
+                android:bottomRightRadius="3dp"
+                android:topLeftRadius="3dp"
+                android:topRightRadius="3dp" />
+        </shape>
+    </item>
+</ripple>
