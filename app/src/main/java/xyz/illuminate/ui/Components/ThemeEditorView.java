@@ -1408,9 +1408,7 @@ public class ThemeEditorView {
                                 }
                                 if (fragment != null) {
                                     ArrayList<ThemeDescription> items = fragment.getThemeDescriptions();
-                                    if (fragment instanceof HomeActivity) {
-                                        items.addAll(((HomeActivity) fragment).getPagerThemeDescriptions());
-                                    }
+
                                     if (items != null) {
                                         editorAlert = new EditorAlert(parentActivity, items);
                                         editorAlert.setOnDismissListener(dialog -> {
