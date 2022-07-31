@@ -1,3 +1,11 @@
+/*
+ * This is the source code of Telegram for Android v. 5.x.x.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Nikolai Kudashov, 2013-2018.
+ */
+
 package xyz.illuminate.ui.Cells;
 
 import android.animation.Animator;
@@ -10,20 +18,23 @@ import android.text.method.LinkMovementMethod;
 import android.text.style.AbsoluteSizeSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
-import java.util.ArrayList;
-
 import xyz.illuminate.app.AndroidUtilities;
 import xyz.illuminate.app.LocaleController;
-import xyz.illuminate.ui.ActionBar.Theme;
 import xyz.illuminate.ui.Components.LayoutHelper;
+import xyz.illuminate.ui.ActionBar.Theme;
+import xyz.illuminate.ui.Components.LinkSpanDrawable;
+
+import java.util.ArrayList;
 
 public class TextInfoPrivacyCell extends FrameLayout {
 
-    private final TextView textView;
+    private TextView textView;
+    private LinkSpanDrawable.LinkCollector links;
     private String linkTextColorKey = Theme.key_windowBackgroundWhiteLinkText;
     private int topPadding = 10;
     private int bottomPadding = 17;
@@ -38,24 +49,42 @@ public class TextInfoPrivacyCell extends FrameLayout {
     public TextInfoPrivacyCell(Context context, int padding) {
         super(context);
 
-        textView = new TextView(context) {
+        textView = new LinkSpanDrawable.LinksTextView(context, links = new LinkSpanDrawable.LinkCollector(this)) {
             @Override
             protected void onDraw(Canvas canvas) {
                 onTextDraw();
                 super.onDraw(canvas);
+                afterTextDraw();
             }
         };
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         textView.setGravity(LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
         textView.setPadding(0, AndroidUtilities.dp(10), 0, AndroidUtilities.dp(17));
         textView.setMovementMethod(LinkMovementMethod.getInstance());
-        textView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2));
-        textView.setLinkTextColor(Theme.getColor(linkTextColorKey));
+        textView.setTextColor(getThemedColor(Theme.key_windowBackgroundWhite));
+        textView.setLinkTextColor(getThemedColor(linkTextColorKey));
         textView.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, padding, 0, padding, 0));
     }
 
+    @Override
+    protected void onDraw(Canvas canvas) {
+        if (links != null) {
+            canvas.save();
+            canvas.translate(textView.getLeft(), textView.getTop());
+            if (links.draw(canvas)) {
+                invalidate();
+            }
+            canvas.restore();
+        }
+        super.onDraw(canvas);
+    }
+
     protected void onTextDraw() {
+
+    }
+
+    protected void afterTextDraw() {
 
     }
 
@@ -112,7 +141,7 @@ public class TextInfoPrivacyCell extends FrameLayout {
     }
 
     public void setTextColor(String key) {
-        textView.setTextColor(Theme.getColor(key));
+        textView.setTextColor(getThemedColor(key));
         textView.setTag(key);
     }
 
@@ -126,7 +155,7 @@ public class TextInfoPrivacyCell extends FrameLayout {
 
     public void setEnabled(boolean value, ArrayList<Animator> animators) {
         if (animators != null) {
-            animators.add(ObjectAnimator.ofFloat(textView, "alpha", value ? 1.0f : 0.5f));
+            animators.add(ObjectAnimator.ofFloat(textView, View.ALPHA, value ? 1.0f : 0.5f));
         } else {
             textView.setAlpha(value ? 1.0f : 0.5f);
         }
@@ -137,5 +166,9 @@ public class TextInfoPrivacyCell extends FrameLayout {
         super.onInitializeAccessibilityNodeInfo(info);
         info.setClassName(TextView.class.getName());
         info.setText(text);
+    }
+
+    private int getThemedColor(String key) {
+        return Theme.getColor(key);
     }
 }

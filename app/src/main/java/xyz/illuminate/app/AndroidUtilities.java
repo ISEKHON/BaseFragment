@@ -3550,6 +3550,10 @@ public class AndroidUtilities {
     public static void setNavigationBarColor(Window window, int overlayDrawNavBarColor) {
     }
 
+    public static boolean isAccessibilityScreenReaderEnabled() {
+        return false;
+    }
+
     private static class LinkSpec {
         String url;
         int start;
