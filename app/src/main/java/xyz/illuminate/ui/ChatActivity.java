@@ -10,6 +10,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
 import xyz.illuminate.app.R;
+import xyz.illuminate.ui.ActionBar.ActionBar;
 import xyz.illuminate.ui.ActionBar.ActionBarMenu;
 import xyz.illuminate.ui.ActionBar.ActionBarMenuItem;
 import xyz.illuminate.ui.ActionBar.AdjustPanLayoutHelper;
@@ -25,8 +26,15 @@ public class ChatActivity extends BaseFragment {
     private FrameLayout contentView;
     private ActionBarMenuItem searchItem;
 
-    public static boolean isClickableLink(String url) {
-        return true;
+    @Override
+    protected ActionBar createActionBar(Context context) {
+        ActionBar actionBar = new ActionBar(context);
+        actionBar.setBackButtonDrawable(new BackDrawable(false));
+        actionBar.setAddToContainer(false);
+        actionBar.setItemsColor(0xffffffff, false);
+        actionBar.setBackgroundColor(0xfffe6262);
+        actionBar.setTitle("ActionBar");
+        return actionBar;
     }
 
     @Override
@@ -38,10 +46,6 @@ public class ChatActivity extends BaseFragment {
         searchItem.setSearchFieldHint("Search for messages");
 
 
-        actionBar.setOccupyStatusBar(true);
-        actionBar.setBackButtonDrawable(new BackDrawable(false));
-
-        actionBar.setItemsColor(0xffffffff, false);
         fragmentView = new FrameLayout(context) {
             final AdjustPanLayoutHelper adjustPanLayoutHelper = new AdjustPanLayoutHelper(this) {
 
@@ -72,11 +76,10 @@ public class ChatActivity extends BaseFragment {
         contentView = (FrameLayout) fragmentView;
 
         fragmentView.setOnTouchListener((view, ev) -> true);
-        actionBar.setBackgroundColor(0xfffe6262);
-        actionBar.setTitle("Finallllly");
 
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.addView(actionBar);
         homeActivity = new HomeActivity();
         Button intro = new Button(context) {
             public boolean onTouchEvent(MotionEvent event) {
@@ -117,12 +120,6 @@ public class ChatActivity extends BaseFragment {
             intro.setText(editText.getText().toString());
             editText.requestLayout();
         });
-
-        ((ViewGroup) fragmentView).addView(editText, LayoutHelper.createFrame(-2, -2, Gravity.CENTER));
         return fragmentView;
     }
-
-// removed on activity result
-
-
 }

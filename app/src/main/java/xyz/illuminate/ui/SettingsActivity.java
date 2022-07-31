@@ -11,6 +11,7 @@ import android.widget.TextView;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import xyz.illuminate.app.AndroidUtilities;
 import xyz.illuminate.app.ApplicationLoader;
 import xyz.illuminate.app.NotificationCenter;
 import xyz.illuminate.app.SharedConfig;
@@ -27,6 +28,7 @@ import xyz.illuminate.ui.Components.LayoutHelper;
 import xyz.illuminate.ui.Components.RecyclerListView;
 import xyz.illuminate.ui.Components.SeekBarView;
 import xyz.illuminate.ui.Components.ThemeEditorView;
+import xyz.illuminate.ui.Components.ViewHelper;
 
 public class SettingsActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
@@ -67,6 +69,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         actionBar.setCastShadows(false);
         actionBar.setBackButtonDrawable(new BackDrawable(false));
         actionBar.setOccupyStatusBar(true);
+        actionBar.setAddToContainer(false);
         actionBar.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
 
         actionBar.setTitle("Settings");
@@ -95,6 +98,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         listView.setVerticalScrollBarEnabled(false);
         listView.setItemAnimator(null);
         listView.setLayoutAnimation(null);
+        frameLayout.addView(actionBar);
         frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         listView.setAdapter(listAdapter);
         listView.setOnItemClickListener((view, position) -> {
@@ -247,6 +251,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     break;
                 case 3:
                     view = new ThemeHorizontalListCell(SettingsActivity.this, mContext);
+                    ViewHelper.setPadding(view, AndroidUtilities.dp(8));
                     break;
             }
             return new RecyclerListView.Holder(view);

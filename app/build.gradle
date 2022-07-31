@@ -94,11 +94,6 @@ dependencies {
     //networking libs
     implementation 'com.android.volley:volley:1.2.1'
 
-    //ui related git libs
-    implementation 'com.github.stfalcon-studio:StfalconImageViewer:v1.0.1'
-    implementation 'com.github.bumptech.glide:glide:4.13.2'
-    implementation 'de.hdodenhof:circleimageview:3.1.0'
-
     //tests
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.3'

@@ -22,10 +22,9 @@ import xyz.illuminate.ui.Components.URLSpanUserMention;
 @SuppressWarnings("unchecked")
 public class MediaDataController extends BaseController {
     private static final Pattern BOLD_PATTERN = Pattern.compile("\\*\\*(.+?)\\*\\*");
-    private static final Pattern ITALIC_PATTERN = Pattern.compile("''(.+?)''");
+    private static final Pattern ITALIC_PATTERN = Pattern.compile("__(.+?)__");
     private static final Pattern SPOILER_PATTERN = Pattern.compile("\\|\\|(.+?)\\|\\|");
-    private static final Pattern STRIKE_PATTERN = Pattern.compile("--(.+?)--");
-    private static final Pattern UNDERLINE_PATTERN = Pattern.compile("__(.+?)__");
+    private static final Pattern STRIKE_PATTERN = Pattern.compile("~~(.+?)~~");
 
     private static volatile MediaDataController Instance = new MediaDataController();
     private static final Comparator<TLRPC.MessageEntity> entityComparator = (entity1, entity2) -> {
@@ -457,7 +456,6 @@ public class MediaDataController extends BaseController {
         cs = parsePattern(cs, BOLD_PATTERN, entities, obj -> new TLRPC.TL_messageEntityBold());
         cs = parsePattern(cs, ITALIC_PATTERN, entities, obj -> new TLRPC.TL_messageEntityItalic());
         cs = parsePattern(cs, SPOILER_PATTERN, entities, obj -> new TLRPC.TL_messageEntitySpoiler());
-        cs = parsePattern(cs, UNDERLINE_PATTERN, entities, obj -> new TLRPC.TL_messageEntityUnderline());
         if (allowStrike) {
             cs = parsePattern(cs, STRIKE_PATTERN, entities, obj -> new TLRPC.TL_messageEntityStrike());
         }

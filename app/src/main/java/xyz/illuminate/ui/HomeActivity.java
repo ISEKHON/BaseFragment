@@ -4,13 +4,8 @@ import android.animation.Animator;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
-import android.content.res.Configuration;
 import android.graphics.Canvas;
-import android.transition.ChangeBounds;
-import android.transition.TransitionManager;
-import android.transition.TransitionSet;
 import android.view.Gravity;
-import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -18,15 +13,10 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
-import androidx.interpolator.view.animation.FastOutSlowInInterpolator;
-
 import java.util.ArrayList;
 
 import xyz.illuminate.app.AndroidUtilities;
-import xyz.illuminate.app.FileLog;
 import xyz.illuminate.app.NotificationCenter;
-import xyz.illuminate.app.R;
-import xyz.illuminate.app.SharedConfig;
 import xyz.illuminate.ui.ActionBar.ActionBar;
 import xyz.illuminate.ui.ActionBar.BackDrawable;
 import xyz.illuminate.ui.ActionBar.BaseFragment;
@@ -105,8 +95,26 @@ public class HomeActivity extends BaseFragment implements NotificationCenter.Not
 
         container.setOrientation(LinearLayout.VERTICAL);
         container.setGravity(Gravity.CENTER);
+
         ChatActivity chatActivity = new ChatActivity();
-        button = new Button(context);
+        button = new Button(context) {
+            public boolean onTouchEvent(MotionEvent event) {
+                float lastY;
+                float startY = 0.0f;
+
+                lastY = event.getY();
+                if (event.getAction() == MotionEvent.ACTION_UP) {
+                    finishPreviewFragment();
+                } else if (event.getAction() == MotionEvent.ACTION_MOVE) {
+                    float dy = startY - lastY;
+                    movePreviewFragment(dy);
+                    if (dy < 0) {
+                        startY = lastY;
+                    }
+                }
+                return super.onTouchEvent(event);
+            }
+        };
         button.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhite));
         button.setText("Open Next Fragment");
         button.setPadding(AndroidUtilities.dp(8), AndroidUtilities.dp(8), AndroidUtilities.dp(8), AndroidUtilities.dp(8));
@@ -118,20 +126,6 @@ public class HomeActivity extends BaseFragment implements NotificationCenter.Not
         button.setOnClickListener(view -> presentFragment(new ChatActivity()));
         button.setFocusable(true);
 
-			button.setOnTouchListener((v, ev) -> {
-				if(ev.getAction() == MotionEvent.ACTION_DOWN){
-					button.requestFocus();
-					presentFragmentAsPreview(chatActivity);
-					button.requestFocus();
-				}else if(ev.getAction() == MotionEvent.ACTION_UP){
-					chatActivity.finishPreviewFragment();
-					AndroidUtilities.showToast("Finger moved up");
-					presentFragment(chatActivity);
-				}
-				return false;
-			}
-			);
-
         container.addView(button, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER, 20, 5, 20, 5));
 
         settings = new Button(context);
@@ -141,7 +135,7 @@ public class HomeActivity extends BaseFragment implements NotificationCenter.Not
         settings.setBackground(Theme.createRoundRectDrawable(15, Theme.getColor(Theme.key_buttonBackgroundBlue)));
         settings.setOnClickListener(view -> presentFragment(new SettingsActivity()));
         settings.setOnLongClickListener(v -> {
-            presentFragmentAsPreviewWithMenu(chatActivity,null);
+            presentFragmentAsPreviewWithMenu(chatActivity, null);
             return true;
         });
         container.addView(settings, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER, 20, 5, 20, 5));

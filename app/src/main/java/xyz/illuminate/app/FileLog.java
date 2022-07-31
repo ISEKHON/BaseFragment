@@ -10,7 +10,7 @@ import java.util.Locale;
 import xyz.illuminate.app.time.FastDateFormat;
 
 public class FileLog {
-    private final static String tag = "tmessages";
+    private final static String tag = "Basefragmnent";
     private static volatile FileLog Instance = null;
     private OutputStreamWriter streamWriter = null;
     private FastDateFormat dateFormat = null;
