@@ -106,7 +106,7 @@ public class DeveloperTools extends BaseFragment implements NotificationCenter.N
                 presentFragment(new HomeActivity());
             } else if (position == themeEditorRow) {
                 new ThemeEditorView().show(getParentActivity(), Theme.currentTheme);
-                BulletinFactory.createBanBulletin(DeveloperTools.this, true);
+                BulletinFactory.createCopyLinkBulletin(DeveloperTools.this);
             }
         });
         EditTextCaption caption = new EditTextCaption(context);
@@ -130,7 +130,7 @@ public class DeveloperTools extends BaseFragment implements NotificationCenter.N
                 }
                 cellFlickerDrawable.setParentWidth(getMeasuredWidth());
                 AndroidUtilities.rectTmp.set(0, 0, getMeasuredWidth(), getMeasuredHeight());
-                cellFlickerDrawable.draw(canvas, AndroidUtilities.rectTmp, AndroidUtilities.dp(4));
+                cellFlickerDrawable.draw(canvas, AndroidUtilities.rectTmp, AndroidUtilities.dp(4),null);
                 invalidate();
             }
 

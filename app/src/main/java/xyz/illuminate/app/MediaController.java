@@ -209,7 +209,7 @@ public class MediaController implements NotificationCenter.NotificationCenterDel
                                 DownloadManager downloadManager = (DownloadManager) ApplicationLoader.applicationContext.getSystemService(Context.DOWNLOAD_SERVICE);
                                 downloadManager.addCompletedDownload(destFile.getName(), destFile.getName(), false, mime, destFile.getAbsolutePath(), destFile.length(), true);
                             } else {
-                                AndroidUtilities.addMediaToGallery(destFile.getAbsoluteFile());
+
                             }
                         }
                     }

@@ -33,6 +33,7 @@ import android.widget.TextView;
 
 import androidx.annotation.Keep;
 import androidx.annotation.Nullable;
+import androidx.core.graphics.ColorUtils;
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
 
 import java.lang.reflect.Field;
@@ -623,7 +624,7 @@ public class EditTextBoldCursor extends EditTextEffects {
                 }
                 canvas.scale(scale, scale);
                 canvas.translate(0, -AndroidUtilities.dp(22) * headerAnimationProgress);
-                getPaint().setColor(AndroidUtilities.lerpColor(hintColor, headerHintColor, headerAnimationProgress));
+                getPaint().setColor(ColorUtils.blendARGB(hintColor, headerHintColor, headerAnimationProgress));
             } else {
                 getPaint().setColor(hintColor);
                 getPaint().setAlpha((int) (255 * hintAlpha * (Color.alpha(hintColor) / 255.0f)));
