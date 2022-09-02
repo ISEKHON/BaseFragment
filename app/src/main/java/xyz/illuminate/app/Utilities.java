@@ -1,3 +1,11 @@
+/*
+ * This is the source code of Telegram for Android v. 5.x.x.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Nikolai Kudashov, 2013-2018.
+ */
+
 package xyz.illuminate.app;
 
 import android.graphics.Bitmap;
@@ -19,17 +27,20 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class Utilities {
-
-    final protected static char[] hexArray = "0123456789ABCDEF".toCharArray();
     public static Pattern pattern = Pattern.compile("[\\-0-9]+");
     public static SecureRandom random = new SecureRandom();
     public static Random fastRandom = new Xoroshiro128PlusRandom(random.nextLong());
+
     public static volatile DispatchQueue stageQueue = new DispatchQueue("stageQueue");
     public static volatile DispatchQueue globalQueue = new DispatchQueue("globalQueue");
     public static volatile DispatchQueue cacheClearQueue = new DispatchQueue("cacheClearQueue");
     public static volatile DispatchQueue searchQueue = new DispatchQueue("searchQueue");
     public static volatile DispatchQueue phoneBookQueue = new DispatchQueue("phoneBookQueue");
     public static volatile DispatchQueue themeQueue = new DispatchQueue("themeQueue");
+
+    private final static String RANDOM_STRING_CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    final protected static char[] hexArray = "0123456789ABCDEF".toCharArray();
 
     static {
         try {
@@ -64,7 +75,7 @@ public class Utilities {
 
     public native static void aesCtrDecryption(ByteBuffer buffer, byte[] key, byte[] iv, int offset, int length);
 
-    public native static void aesCtrDecryptionByteArray(byte[] buffer, byte[] key, byte[] iv, int offset, int length, int n);
+    public native static void aesCtrDecryptionByteArray(byte[] buffer, byte[] key, byte[] iv, int offset, long length, int n);
 
     private native static void aesCbcEncryptionByteArray(byte[] buffer, byte[] key, byte[] iv, int offset, int length, int n, int encrypt);
 
@@ -123,15 +134,48 @@ public class Utilities {
         }
         int val = 0;
         try {
-            Matcher matcher = pattern.matcher(value);
-            if (matcher.find()) {
-                String num = matcher.group(0);
-                val = Integer.parseInt(num);
+            int start = -1, end;
+            for (end = 0; end < value.length(); ++end) {
+                char character = value.charAt(end);
+                boolean allowedChar = character == '-' || character >= '0' && character <= '9';
+                if (allowedChar && start < 0) {
+                    start = end;
+                } else if (!allowedChar && start >= 0) {
+                    end++;
+                    break;
+                }
             }
+            if (start >= 0) {
+                String str = value.subSequence(start, end).toString();
+//                val = parseInt(str);
+                val = Integer.parseInt(str);
+            }
+//            Matcher matcher = pattern.matcher(value);
+//            if (matcher.find()) {
+//                String num = matcher.group(0);
+//                val = Integer.parseInt(num);
+//            }
         } catch (Exception ignore) {
-
         }
         return val;
+    }
+
+    private static int parseInt(final String s) {
+        int num = 0;
+        boolean negative = true;
+        final int len = s.length();
+        final char ch = s.charAt(0);
+        if (ch == '-') {
+            negative = false;
+        } else {
+            num = '0' - ch;
+        }
+        int i = 1;
+        while (i < len) {
+            num = num * 10 + '0' - s.charAt(i++);
+        }
+
+        return negative ? -num : num;
     }
 
     public static Long parseLong(String value) {
@@ -293,10 +337,10 @@ public class Utilities {
         return computeSHA256(convertme, 0, convertme.length);
     }
 
-    public static byte[] computeSHA256(byte[] convertme, int offset, int len) {
+    public static byte[] computeSHA256(byte[] convertme, int offset, long len) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            md.update(convertme, offset, len);
+            md.update(convertme, offset, (int) len);
             return md.digest();
         } catch (Exception e) {
             FileLog.e(e);
@@ -411,5 +455,35 @@ public class Utilities {
             FileLog.e(e);
         }
         return null;
+    }
+
+    public static int clamp(int value, int maxValue, int minValue) {
+        return Math.max(Math.min(value, maxValue), minValue);
+    }
+
+    public static float clamp(float value, float maxValue, float minValue) {
+        if (Float.isNaN(value)) {
+            return minValue;
+        }
+        if (Float.isInfinite(value)) {
+            return maxValue;
+        }
+        return Math.max(Math.min(value, maxValue), minValue);
+    }
+
+    public static String generateRandomString() {
+        return generateRandomString(16);
+    }
+
+    public static String generateRandomString(int chars) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < chars; i++) {
+            sb.append(RANDOM_STRING_CHARS.charAt(fastRandom.nextInt(RANDOM_STRING_CHARS.length())));
+        }
+        return sb.toString();
+    }
+
+    public static interface Callback<T> {
+        public void run(T arg);
     }
 }

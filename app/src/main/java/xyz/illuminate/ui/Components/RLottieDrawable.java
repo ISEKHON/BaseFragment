@@ -1,3 +1,11 @@
+/*
+ * This is the source code of Telegram for Android v. 5.x.x.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Nikolai Kudashov, 2013-2018.
+ */
+
 package xyz.illuminate.ui.Components;
 
 import android.graphics.Bitmap;
@@ -5,6 +13,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.drawable.Animatable;
 import android.graphics.drawable.BitmapDrawable;
 import android.os.Handler;
@@ -21,17 +30,19 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 
 import xyz.illuminate.app.AndroidUtilities;
 import xyz.illuminate.app.ApplicationLoader;
+import xyz.illuminate.app.DispatchQueue;
 import xyz.illuminate.app.DispatchQueuePool;
+import xyz.illuminate.app.DispatchQueuePoolBackground;
 import xyz.illuminate.app.FileLog;
 import xyz.illuminate.app.Utilities;
+import xyz.illuminate.app.utils.BitmapsCache;
 
-public class RLottieDrawable extends BitmapDrawable implements Animatable {
+public class RLottieDrawable extends BitmapDrawable implements Animatable, BitmapsCache.Cacheable {
+
+    public boolean skipFrameUpdate;
 
     public static native long create(String src, String json, int w, int h, int[] params, boolean precache, int[] colorReplacement, boolean limitFps, int fitzModifier);
 
@@ -45,10 +56,8 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
 
     public static native int getFrame(long ptr, int frame, Bitmap bitmap, int w, int h, int stride, boolean clear);
 
-    private static native void createCache(long ptr, int w, int h);
-
-    protected int width;
-    protected int height;
+    protected final int width;
+    protected final int height;
     protected final int[] metaData = new int[3];
     protected int timeBetweenFrames;
     protected int customEndFrame = -1;
@@ -58,18 +67,22 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
     private HashMap<String, Integer> newColorUpdates = new HashMap<>();
     private volatile HashMap<String, Integer> pendingColorUpdates = new HashMap<>();
     private HashMap<Integer, Integer> vibrationPattern;
+    private boolean resetVibrationAfterRestart = false;
+    private boolean allowVibration = true;
 
     private WeakReference<Runnable> frameReadyCallback;
     protected WeakReference<Runnable> onFinishCallback;
     private int finishFrame;
 
     private View currentParentView;
+    private ArrayList parentViews = new ArrayList<>();
 
     protected int isDice;
     protected int diceSwitchFramesCount = -1;
 
     protected int autoRepeat = 1;
     protected int autoRepeatPlayCount;
+    protected long autoRepeatTimeout;
 
     private long lastFrameTime;
     protected volatile boolean nextFrameIsLast;
@@ -95,7 +108,9 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
     private float scaleY = 1.0f;
     private boolean applyTransformation;
     private boolean needScale;
-    private final Rect dstRect = new Rect();
+    private final RectF dstRect = new RectF();
+    private RectF dstRectBackground;
+    private Paint backgroundPaint;
     protected static final Handler uiHandler = new Handler(Looper.getMainLooper());
     protected volatile boolean isRunning;
     protected volatile boolean isRecycled;
@@ -106,6 +121,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
     protected boolean destroyAfterLoading;
     protected int secondFramesCount;
     protected volatile boolean setLastFrame;
+    private boolean fallbackCache;
 
     private boolean invalidateOnProgressSet;
     private boolean isInvalid;
@@ -114,27 +130,29 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
     private static ThreadLocal<byte[]> readBufferLocal = new ThreadLocal<>();
     private static ThreadLocal<byte[]> bufferLocal = new ThreadLocal<>();
 
-    private ArrayList<WeakReference<View>> parentViews = new ArrayList<>();
-    private static DispatchQueuePool loadFrameRunnableQueue = new DispatchQueuePool(4);
-    private static ThreadPoolExecutor lottieCacheGenerateQueue;
+    private static final DispatchQueuePool loadFrameRunnableQueue = new DispatchQueuePool(4);
+    public static DispatchQueue lottieCacheGenerateQueue;
+
+    File file;
+    boolean precache;
 
     private Runnable onAnimationEndListener;
+    private Runnable onFrameReadyRunnable;
+
+    private View masterParent;
+    NativePtrArgs args;
 
     protected Runnable uiRunnableNoFrame = new Runnable() {
         @Override
         public void run() {
             loadFrameTask = null;
             decodeFrameFinishedInternal();
+            if (onFrameReadyRunnable != null) {
+                onFrameReadyRunnable.run();
+            }
         }
     };
 
-    private Runnable uiRunnableCacheFinished = new Runnable() {
-        @Override
-        public void run() {
-            cacheGenerateTask = null;
-            decodeFrameFinishedInternal();
-        }
-    };
 
     protected Runnable uiRunnable = new Runnable() {
         @Override
@@ -142,41 +160,52 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
             singleFrameDecoded = true;
             invalidateInternal();
             decodeFrameFinishedInternal();
+            if (onFrameReadyRunnable != null) {
+                onFrameReadyRunnable.run();
+            }
         }
     };
 
-    private Runnable uiRunnableLastFrame = new Runnable() {
-        @Override
-        public void run() {
-            singleFrameDecoded = true;
-            isRunning = false;
-            invalidateInternal();
-            decodeFrameFinishedInternal();
-        }
-    };
+    long startTime;
+    boolean generatingCache;
 
     private Runnable uiRunnableGenerateCache = new Runnable() {
         @Override
         public void run() {
-            if (!isRecycled && !destroyWhenDone && nativePtr != 0) {
-                lottieCacheGenerateQueue.execute(cacheGenerateTask = () -> {
-                    if (cacheGenerateTask == null) {
-                        return;
+            if (!isRecycled && !destroyWhenDone && canLoadFrames() && cacheGenerateTask == null) {
+                startTime = System.currentTimeMillis();
+                generatingCache = true;
+                lottieCacheGenerateQueue.postRunnable(cacheGenerateTask = () -> {
+                    BitmapsCache bitmapsCacheFinal = bitmapsCache;
+                    if (bitmapsCacheFinal != null) {
+                        bitmapsCacheFinal.createCache();
                     }
-
-                    createCache(nativePtr, width, height);
                     uiHandler.post(uiRunnableCacheFinished);
                 });
             }
+        }
+    };
+
+    private Runnable uiRunnableCacheFinished = new Runnable() {
+        @Override
+        public void run() {
+            cacheGenerateTask = null;
+            generatingCache = false;
             decodeFrameFinishedInternal();
         }
     };
 
+    BitmapsCache bitmapsCache;
+    int generateCacheFramePointer;
+
+    public static void createCacheGenQueue() {
+        lottieCacheGenerateQueue = new DispatchQueue("cache generator queue");
+    }
+
     protected void checkRunningTasks() {
         if (cacheGenerateTask != null) {
-            if (lottieCacheGenerateQueue.remove(cacheGenerateTask)) {
-                cacheGenerateTask = null;
-            }
+            lottieCacheGenerateQueue.cancelRunnable(cacheGenerateTask);
+            cacheGenerateTask = null;
         }
         if (!hasParentView() && nextRenderingBitmap != null && loadFrameTask != null) {
             loadFrameTask = null;
@@ -196,7 +225,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
                 }
             }
         }
-        if (nativePtr == 0 && secondNativePtr == 0) {
+        if ((nativePtr == 0 || fallbackCache) && secondNativePtr == 0 && bitmapsCache == null) {
             recycleResources();
             return;
         }
@@ -208,23 +237,17 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
     }
 
     protected void recycleResources() {
-        try {
-            if (renderingBitmap != null) {
-                renderingBitmap.recycle();
-                renderingBitmap = null;
-            }
-            if (backgroundBitmap != null) {
-                backgroundBitmap.recycle();
-                backgroundBitmap = null;
-            }
-        } catch (Exception e) {
-            FileLog.e(e);
-            renderingBitmap = null;
-            backgroundBitmap = null;
-        }
+        ArrayList<Bitmap> bitmapToRecycle = new ArrayList<>();
+        bitmapToRecycle.add(renderingBitmap);
+        bitmapToRecycle.add(nextRenderingBitmap);
+        renderingBitmap = null;
+        backgroundBitmap = null;
+        AndroidUtilities.recycleBitmaps(bitmapToRecycle);
+
         if (onAnimationEndListener != null) {
             onAnimationEndListener = null;
         }
+        invalidateInternal();
     }
 
     public void setOnFinishCallback(Runnable callback, int frame) {
@@ -236,13 +259,16 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
         }
     }
 
+    private boolean genCacheSend;
     protected Runnable loadFrameRunnable = new Runnable() {
+        private long lastUpdate = 0;
+
         @Override
         public void run() {
             if (isRecycled) {
                 return;
             }
-            if (nativePtr == 0 || isDice == 2 && secondNativePtr == 0) {
+            if (!canLoadFrames() || isDice == 2 && secondNativePtr == 0) {
                 if (frameWaitSync != null) {
                     frameWaitSync.countDown();
                 }
@@ -267,23 +293,52 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
                 } catch (Exception ignore) {
 
                 }
-                if (pendingReplaceColors != null) {
+                if (pendingReplaceColors != null && nativePtr != 0) {
                     replaceColors(nativePtr, pendingReplaceColors);
                     pendingReplaceColors = null;
                 }
                 try {
-                    long ptrToUse;
-                    if (isDice == 1) {
-                        ptrToUse = nativePtr;
-                    } else if (isDice == 2) {
-                        ptrToUse = secondNativePtr;
-                        if (setLastFrame) {
-                            currentFrame = secondFramesCount - 1;
+                    int result = 0;
+                    int framesPerUpdates = shouldLimitFps ? 2 : 1;
+                    if (precache && bitmapsCache != null && (!fallbackCache || !generatingCache)) {
+                        try {
+                            result = bitmapsCache.getFrame(currentFrame / framesPerUpdates, backgroundBitmap);
+                        } catch (Exception e) {
+                            FileLog.e(e);
                         }
                     } else {
-                        ptrToUse = nativePtr;
+                        if (fallbackCache) {
+                            final long now = SystemClock.elapsedRealtime();
+                            if (lastUpdate > 0) {
+                                framesPerUpdates = Math.max(1, Math.min(4, Math.round((now - lastUpdate) / 16f)));
+                                if (currentFrame + framesPerUpdates > (customEndFrame >= 0 ? customEndFrame : metaData[0])) {
+                                    framesPerUpdates = (customEndFrame >= 0 ? customEndFrame : metaData[0]) - currentFrame;
+                                }
+                            }
+                            lastUpdate = now;
+                        }
+                        long ptrToUse;
+                        if (isDice == 1) {
+                            ptrToUse = nativePtr;
+                        } else if (isDice == 2) {
+                            ptrToUse = secondNativePtr;
+                            if (setLastFrame) {
+                                currentFrame = secondFramesCount - 1;
+                            }
+                        } else {
+                            ptrToUse = nativePtr;
+                        }
+                        result = getFrame(ptrToUse, currentFrame, backgroundBitmap, width, height, backgroundBitmap.getRowBytes(), true);
                     }
-                    int result = getFrame(ptrToUse, currentFrame, backgroundBitmap, width, height, backgroundBitmap.getRowBytes(), true);
+                    if (bitmapsCache != null && bitmapsCache.needGenCache()) {
+                        if (!genCacheSend) {
+                            genCacheSend = true;
+                            uiHandler.post(uiRunnableGenerateCache);
+                        }
+                        if (!fallbackCache) {
+                            result = -1;
+                        }
+                    }
                     if (result == -1) {
                         uiHandler.post(uiRunnableNoFrame);
                         if (frameWaitSync != null) {
@@ -291,12 +346,9 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
                         }
                         return;
                     }
-                    if (metaData[2] != 0) {
-                        uiHandler.post(uiRunnableGenerateCache);
-                        metaData[2] = 0;
-                    }
+
                     nextRenderingBitmap = backgroundBitmap;
-                    int framesPerUpdates = shouldLimitFps ? 2 : 1;
+
                     if (isDice == 1) {
                         if (currentFrame + framesPerUpdates < (diceSwitchFramesCount == -1 ? metaData[0] : diceSwitchFramesCount)) {
                             currentFrame += framesPerUpdates;
@@ -305,6 +357,10 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
                             nextFrameIsLast = false;
                             if (secondNativePtr != 0) {
                                 isDice = 2;
+                            }
+                            if (resetVibrationAfterRestart) {
+                                vibrationPattern = null;
+                                resetVibrationAfterRestart = false;
                             }
                         }
                     } else if (isDice == 2) {
@@ -345,10 +401,18 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
                             } else if (autoRepeat == 1) {
                                 currentFrame = 0;
                                 nextFrameIsLast = false;
+                                if (resetVibrationAfterRestart) {
+                                    vibrationPattern = null;
+                                    resetVibrationAfterRestart = false;
+                                }
                             } else if (autoRepeat == 2) {
                                 currentFrame = 0;
                                 nextFrameIsLast = true;
                                 autoRepeatPlayCount++;
+                                if (resetVibrationAfterRestart) {
+                                    vibrationPattern = null;
+                                    resetVibrationAfterRestart = false;
+                                }
                             } else {
                                 nextFrameIsLast = true;
                                 checkDispatchOnAnimationEnd();
@@ -366,45 +430,85 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
         }
     };
 
-    public RLottieDrawable(File file, int w, int h, boolean precache, boolean limitFps) {
-        this(file, w, h, precache, limitFps, null, 0);
+    public RLottieDrawable(File file, int w, int h, BitmapsCache.CacheOptions cacheOptions, boolean limitFps) {
+        this(file, w, h, cacheOptions, limitFps, null, 0);
     }
 
-    File file;
-
-    public RLottieDrawable(File file, int w, int h, boolean precache, boolean limitFps, int[] colorReplacement, int fitzModifier) {
+    public RLottieDrawable(File file, int w, int h, BitmapsCache.CacheOptions cacheOptions, boolean limitFps, int[] colorReplacement, int fitzModifier) {
         width = w;
         height = h;
         shouldLimitFps = limitFps;
+        this.precache = cacheOptions != null;
+        this.fallbackCache = cacheOptions != null && cacheOptions.fallback;
         getPaint().setFlags(Paint.FILTER_BITMAP_FLAG);
 
         this.file = file;
-        nativePtr = create(file.getAbsolutePath(), null, w, h, metaData, precache, colorReplacement, shouldLimitFps, fitzModifier);
         if (precache && lottieCacheGenerateQueue == null) {
-            lottieCacheGenerateQueue = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
+            createCacheGenQueue();
         }
-        if (nativePtr == 0) {
-            file.delete();
+        if (precache) {
+            bitmapsCache = new BitmapsCache(file, this, cacheOptions, w, h);
+            args = new NativePtrArgs();
+            args.file = file.getAbsoluteFile();
+            args.json = null;
+            args.colorReplacement = colorReplacement;
+            args.fitzModifier = fitzModifier;
+            nativePtr = create(file.getAbsolutePath(), null, w, h, metaData, precache, colorReplacement, shouldLimitFps, fitzModifier);
+            if (fallbackCache) {
+                if (nativePtr == 0) {
+                    file.delete();
+                }
+            } else {
+                destroy(nativePtr);
+                nativePtr = 0;
+            }
+        } else {
+            nativePtr = create(file.getAbsolutePath(), null, w, h, metaData, precache, colorReplacement, shouldLimitFps, fitzModifier);
+            if (nativePtr == 0) {
+                file.delete();
+            }
         }
+
         if (shouldLimitFps && metaData[1] < 60) {
             shouldLimitFps = false;
         }
         timeBetweenFrames = Math.max(shouldLimitFps ? 33 : 16, (int) (1000.0f / metaData[1]));
     }
 
-    public RLottieDrawable(File file, String json, int w, int h, boolean precache, boolean limitFps, int[] colorReplacement, int fitzModifier) {
+    public RLottieDrawable(File file, String json, int w, int h, BitmapsCache.CacheOptions options, boolean limitFps, int[] colorReplacement, int fitzModifier) {
         width = w;
         height = h;
         shouldLimitFps = limitFps;
+        this.precache = options != null;
         getPaint().setFlags(Paint.FILTER_BITMAP_FLAG);
-
-        nativePtr = create(file.getAbsolutePath(), json, w, h, metaData, precache, colorReplacement, shouldLimitFps, fitzModifier);
         if (precache && lottieCacheGenerateQueue == null) {
-            lottieCacheGenerateQueue = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
+            createCacheGenQueue();
         }
-        if (nativePtr == 0) {
-            file.delete();
+        if (precache) {
+            bitmapsCache = new BitmapsCache(file, this, options, w, h);
+            args = new NativePtrArgs();
+            args.file = file.getAbsoluteFile();
+            args.json = json;
+            args.colorReplacement = colorReplacement;
+            args.fitzModifier = fitzModifier;
+            nativePtr = create(file.getAbsolutePath(), json, w, h, metaData, precache, colorReplacement, shouldLimitFps, fitzModifier);
+            if (fallbackCache) {
+                if (nativePtr == 0) {
+                    file.delete();
+                }
+            } else {
+                if (nativePtr != 0) {
+                    destroy(nativePtr);
+                }
+                nativePtr = 0;
+            }
+        } else {
+            nativePtr = create(file.getAbsolutePath(), json, w, h, metaData, precache, colorReplacement, shouldLimitFps, fitzModifier);
+            if (nativePtr == 0) {
+                file.delete();
+            }
         }
+
         if (shouldLimitFps && metaData[1] < 60) {
             shouldLimitFps = false;
         }
@@ -420,7 +524,6 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
         height = h;
         isDice = 1;
         String jsonString = null;
-
         getPaint().setFlags(Paint.FILTER_BITMAP_FLAG);
         if (TextUtils.isEmpty(jsonString)) {
             timeBetweenFrames = 16;
@@ -606,63 +709,14 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
         return metaData[0];
     }
 
-    public void addParentView(View view) {
-        if (view == null) {
-            return;
-        }
-        for (int a = 0, N = parentViews.size(); a < N; a++) {
-            if (parentViews.get(a).get() == view) {
-                return;
-            } else if (parentViews.get(a).get() == null) {
-                parentViews.remove(a);
-                N--;
-                a--;
-            }
-        }
-        parentViews.add(0, new WeakReference<>(view));
-    }
-
-    public void removeParentView(View view) {
-        if (view == null) {
-            return;
-        }
-        for (int a = 0, N = parentViews.size(); a < N; a++) {
-            View v = parentViews.get(a).get();
-            if (v == view || v == null) {
-                parentViews.remove(a);
-                N--;
-                a--;
-            }
-        }
-    }
 
     protected boolean hasParentView() {
-        if (getCallback() != null) {
-            return true;
-        }
-        for (int a = 0, N = parentViews.size(); a < N; a++) {
-            View view = parentViews.get(a).get();
-            if (view != null) {
-                return true;
-            } else {
-                parentViews.remove(a);
-                N--;
-                a--;
-            }
-        }
-        return false;
+        return !parentViews.isEmpty() || masterParent != null || getCallback() != null;
     }
 
     protected void invalidateInternal() {
-        for (int a = 0, N = parentViews.size(); a < N; a++) {
-            View view = parentViews.get(a).get();
-            if (view != null) {
-                view.invalidate();
-            } else {
-                parentViews.remove(a);
-                N--;
-                a--;
-            }
+        if (masterParent != null) {
+            masterParent.invalidate();
         }
         if (getCallback() != null) {
             invalidateSelf();
@@ -682,7 +736,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
         checkRunningTasks();
         if (loadingInBackground || secondLoadingInBackground) {
             destroyAfterLoading = true;
-        } else if (loadFrameTask == null && cacheGenerateTask == null) {
+        } else if (loadFrameTask == null && cacheGenerateTask == null && !generatingCache) {
             if (nativePtr != 0) {
                 destroy(nativePtr);
                 nativePtr = 0;
@@ -690,6 +744,10 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
             if (secondNativePtr != 0) {
                 destroy(secondNativePtr);
                 secondNativePtr = 0;
+            }
+            if (bitmapsCache != null) {
+                bitmapsCache.recycle();
+                bitmapsCache = null;
             }
             recycleResources();
         } else {
@@ -702,6 +760,10 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
             return;
         }
         autoRepeat = value;
+    }
+
+    public void setAutoRepeatTimeout(long timeout) {
+        autoRepeatTimeout = timeout;
     }
 
     @Override
@@ -746,6 +808,10 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
 
     public void setVibrationPattern(HashMap<Integer, Integer> pattern) {
         vibrationPattern = pattern;
+    }
+
+    public boolean hasVibrationPattern() {
+        return vibrationPattern != null;
     }
 
     public void beginApplyLayerColors() {
@@ -795,7 +861,14 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
     }
 
     protected boolean scheduleNextGetFrame() {
-        if (loadFrameTask != null || nextRenderingBitmap != null || nativePtr == 0 || loadingInBackground || destroyWhenDone || !isRunning && (!decodeSingleFrame || decodeSingleFrame && singleFrameDecoded)) {
+        return scheduleNextGetFrame(false);
+    }
+
+    protected boolean scheduleNextGetFrame(boolean allowGroupedUpdateLocal) {
+        if (loadFrameTask != null || nextRenderingBitmap != null || !canLoadFrames() || loadingInBackground || destroyWhenDone || !isRunning && (!decodeSingleFrame || decodeSingleFrame && singleFrameDecoded)) {
+            return false;
+        }
+        if (generatingCache) {
             return false;
         }
         if (!newColorUpdates.isEmpty()) {
@@ -806,7 +879,12 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
             pendingReplaceColors = newReplaceColors;
             newReplaceColors = null;
         }
-        loadFrameRunnableQueue.execute(loadFrameTask = loadFrameRunnable);
+        loadFrameTask = loadFrameRunnable;
+        if (allowGroupedUpdateLocal && shouldLimitFps) {
+            DispatchQueuePoolBackground.execute(loadFrameTask);
+        } else {
+            loadFrameRunnableQueue.execute(loadFrameTask);
+        }
         return true;
     }
 
@@ -854,7 +932,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
         if (resetFrame && !isRunning) {
             isRunning = true;
         }
-        if (scheduleNextGetFrame()) {
+        if (scheduleNextGetFrame(false)) {
             if (!async) {
                 try {
                     frameWaitSync.await();
@@ -867,6 +945,10 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
             forceFrameRedraw = true;
         }
         invalidateSelf();
+    }
+
+    public boolean isCacheFallbacked() {
+        return fallbackCache;
     }
 
     public void setProgressMs(long ms) {
@@ -891,28 +973,6 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
         currentParentView = view;
     }
 
-    private boolean isCurrentParentViewMaster() {
-        if (getCallback() != null) {
-            return true;
-        }
-        if (parentViews.size() <= 1) {
-            return true;
-        }
-        for (int a = 0, N = parentViews.size(); a < N; a++) {
-            View view = parentViews.get(a).get();
-            if (view == null) {
-                parentViews.remove(a);
-                N--;
-                a--;
-                continue;
-            }
-            if (!view.isShown()) {
-                continue;
-            }
-            return view == currentParentView;
-        }
-        return true;
-    }
 
     @Override
     public boolean isRunning() {
@@ -976,54 +1036,89 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
                 }
             }
         }
-        scheduleNextGetFrame();
+        scheduleNextGetFrame(true);
     }
 
     @Override
     public void draw(Canvas canvas) {
-        if (nativePtr == 0 || destroyWhenDone) {
+        drawInternal(canvas, false, 0);
+    }
+
+    public void drawInBackground(Canvas canvas, float x, float y, float w, float h, int alpha) {
+        if (dstRectBackground == null) {
+            dstRectBackground = new RectF();
+            backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            backgroundPaint.setFilterBitmap(true);
+        }
+        backgroundPaint.setAlpha(alpha);
+        dstRectBackground.set(x, y, x + w, y + h);
+        drawInternal(canvas, true, 0);
+    }
+
+    public void drawInternal(Canvas canvas, boolean drawInBackground, long time) {
+        if (!canLoadFrames() || destroyWhenDone) {
             return;
         }
-        updateCurrentFrame();
+        if (!drawInBackground) {
+            updateCurrentFrame(time, false);
+        }
+
+        RectF rect = drawInBackground ? dstRectBackground : dstRect;
+        Paint paint = drawInBackground ? backgroundPaint : getPaint();
+
+        if (paint.getAlpha() == 0) {
+            return;
+        }
 
         if (!isInvalid && renderingBitmap != null) {
-            if (applyTransformation) {
-                dstRect.set(getBounds());
-                scaleX = (float) dstRect.width() / width;
-                scaleY = (float) dstRect.height() / height;
-                applyTransformation = false;
-                needScale = !(Math.abs(dstRect.width() - width) < AndroidUtilities.dp(1) && Math.abs(dstRect.width() - width) < AndroidUtilities.dp(1));
+            float scaleX, scaleY;
+            boolean needScale;
+            if (!drawInBackground) {
+                rect.set(getBounds());
+                if (applyTransformation) {
+                    this.scaleX = rect.width() / width;
+                    this.scaleY = rect.height() / height;
+                    applyTransformation = false;
+                    this.needScale = !(Math.abs(rect.width() - width) < AndroidUtilities.dp(1) && Math.abs(rect.height() - height) < AndroidUtilities.dp(1));
+                }
+                scaleX = this.scaleX;
+                scaleY = this.scaleY;
+                needScale = this.needScale;
+            } else {
+                scaleX = rect.width() / width;
+                scaleY = rect.height() / height;
+                needScale = !(Math.abs(rect.width() - width) < AndroidUtilities.dp(1) && Math.abs(rect.height() - height) < AndroidUtilities.dp(1));
             }
             if (!needScale) {
-                canvas.drawBitmap(renderingBitmap, dstRect.left, dstRect.top, getPaint());
+                canvas.drawBitmap(renderingBitmap, rect.left, rect.top, paint);
             } else {
                 canvas.save();
-                canvas.translate(dstRect.left, dstRect.top);
+                canvas.translate(rect.left, rect.top);
                 canvas.scale(scaleX, scaleY);
-                canvas.drawBitmap(renderingBitmap, 0, 0, getPaint());
+                canvas.drawBitmap(renderingBitmap, 0, 0, paint);
                 canvas.restore();
             }
 
-            if (isRunning) {
+            if (isRunning && !drawInBackground) {
                 invalidateInternal();
             }
         }
     }
 
-    public void updateCurrentFrame() {
-        long now = SystemClock.elapsedRealtime();
-        long timeDiff = Math.abs(now - lastFrameTime);
+    public void updateCurrentFrame(long time, boolean updateInBackground) {
+        long now = time == 0 ? System.currentTimeMillis() : time;
+        long timeDiff = now - lastFrameTime;
         int timeCheck;
-        if (AndroidUtilities.screenRefreshRate <= 60) {
+        if (AndroidUtilities.screenRefreshRate <= 60 || (updateInBackground && AndroidUtilities.screenRefreshRate <= 80)) {
             timeCheck = timeBetweenFrames - 6;
         } else {
             timeCheck = timeBetweenFrames;
         }
         if (isRunning) {
             if (renderingBitmap == null && nextRenderingBitmap == null) {
-                scheduleNextGetFrame();
-            } else if (nextRenderingBitmap != null && (renderingBitmap == null || timeDiff >= timeCheck) && isCurrentParentViewMaster()) {
-                if (vibrationPattern != null && currentParentView != null) {
+                scheduleNextGetFrame(true);
+            } else if (nextRenderingBitmap != null && (renderingBitmap == null || (timeDiff >= timeCheck && !skipFrameUpdate))) {
+                if (vibrationPattern != null && currentParentView != null && allowVibration) {
                     Integer force = vibrationPattern.get(currentFrame - 1);
                     if (force != null) {
                         currentParentView.performHapticFeedback(force == 1 ? HapticFeedbackConstants.LONG_PRESS : HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -1034,6 +1129,14 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
         } else if ((forceFrameRedraw || decodeSingleFrame && timeDiff >= timeCheck) && nextRenderingBitmap != null) {
             setCurrentFrame(now, timeDiff, timeCheck, true);
         }
+    }
+
+    public void setAllowVibration(boolean allow) {
+        allowVibration = allow;
+    }
+
+    public void resetVibrationAfterRestart(boolean value) {
+        resetVibrationAfterRestart = value;
     }
 
     @Override
@@ -1068,7 +1171,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
     }
 
     public boolean hasBitmap() {
-        return nativePtr != 0 && (renderingBitmap != null || nextRenderingBitmap != null) && !isInvalid;
+        return !isRecycled && (renderingBitmap != null || nextRenderingBitmap != null) && !isInvalid;
     }
 
     public void setInvalidateOnProgressSet(boolean value) {
@@ -1077,5 +1180,84 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable {
 
     public boolean isGeneratingCache() {
         return cacheGenerateTask != null;
+    }
+
+    public void setOnFrameReadyRunnable(Runnable onFrameReadyRunnable) {
+        this.onFrameReadyRunnable = onFrameReadyRunnable;
+    }
+
+    public boolean isLastFrame() {
+        return currentFrame == getFramesCount() - 1;
+    }
+
+    long generateCacheNativePtr;
+
+    @Override
+    public void prepareForGenerateCache() {
+        generateCacheNativePtr = create(args.file.toString(), args.json, width, height, new int[3], false, args.colorReplacement, false, args.fitzModifier);
+        if (generateCacheNativePtr == 0) {
+            file.delete();
+        }
+    }
+
+    @Override
+    public int getNextFrame(Bitmap bitmap) {
+        if (generateCacheNativePtr == 0) {
+            return -1;
+        }
+        int framesPerUpdates = shouldLimitFps ? 2 : 1;
+
+        int result = getFrame(generateCacheNativePtr, generateCacheFramePointer, bitmap, width, height, bitmap.getRowBytes(), true);
+        if (result == -5) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            return getNextFrame(bitmap);
+        }
+        generateCacheFramePointer += framesPerUpdates;
+        if (generateCacheFramePointer > metaData[0]) {
+            return 0;
+        }
+        return 1;
+    }
+
+    @Override
+    public void releaseForGenerateCache() {
+        if (generateCacheNativePtr != 0) {
+            destroy(generateCacheNativePtr);
+            generateCacheNativePtr = 0;
+        }
+    }
+
+    @Override
+    public Bitmap getFirstFrame(Bitmap bitmap) {
+        long nativePtr = create(args.file.toString(), args.json, width, height, new int[3], false, args.colorReplacement, false, args.fitzModifier);
+        if (nativePtr == 0) {
+            return bitmap;
+        }
+        getFrame(nativePtr, 0, bitmap, width, height, bitmap.getRowBytes(), true);
+        destroy(nativePtr);
+        return bitmap;
+    }
+
+    void setMasterParent(View parent) {
+        masterParent = parent;
+    }
+
+    public boolean canLoadFrames() {
+        if (precache) {
+            return bitmapsCache != null || fallbackCache;
+        } else {
+            return nativePtr != 0;
+        }
+    }
+
+    private class NativePtrArgs {
+        public int[] colorReplacement;
+        public int fitzModifier;
+        File file;
+        String json;
     }
 }

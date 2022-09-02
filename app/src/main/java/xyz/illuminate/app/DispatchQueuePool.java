@@ -1,24 +1,24 @@
 package xyz.illuminate.app;
 
 import android.os.SystemClock;
+import android.util.SparseIntArray;
 
 import androidx.annotation.UiThread;
 
-import java.util.HashMap;
 import java.util.LinkedList;
 
 public class DispatchQueuePool {
 
-    private final LinkedList<DispatchQueue> queues = new LinkedList<>();
-    private final HashMap<DispatchQueue, Integer> busyQueuesMap = new HashMap<>();
-    private final LinkedList<DispatchQueue> busyQueues = new LinkedList<>();
-    private final int maxCount;
-    private final int guid;
+    private LinkedList<DispatchQueue> queues = new LinkedList<>();
+    private SparseIntArray busyQueuesMap = new SparseIntArray();
+    private LinkedList<DispatchQueue> busyQueues = new LinkedList<>();
+    private int maxCount;
     private int createdCount;
+    private int guid;
     private int totalTasksCount;
     private boolean cleanupScheduled;
 
-    private final Runnable cleanupRunnable = new Runnable() {
+    private Runnable cleanupRunnable = new Runnable() {
         @Override
         public void run() {
             if (!queues.isEmpty()) {
@@ -66,22 +66,19 @@ public class DispatchQueuePool {
         }
         totalTasksCount++;
         busyQueues.add(queue);
-        Integer count = busyQueuesMap.get(queue);
-        if (count == null) {
-            count = 0;
-        }
-        busyQueuesMap.put(queue, count + 1);
+        int count = busyQueuesMap.get(queue.index, 0);
+        busyQueuesMap.put(queue.index, count + 1);
         queue.postRunnable(() -> {
             runnable.run();
             AndroidUtilities.runOnUIThread(() -> {
                 totalTasksCount--;
-                int remainingTasksCount = busyQueuesMap.get(queue) - 1;
+                int remainingTasksCount = busyQueuesMap.get(queue.index) - 1;
                 if (remainingTasksCount == 0) {
-                    busyQueuesMap.remove(queue);
+                    busyQueuesMap.delete(queue.index);
                     busyQueues.remove(queue);
                     queues.add(queue);
                 } else {
-                    busyQueuesMap.put(queue, remainingTasksCount);
+                    busyQueuesMap.put(queue.index, remainingTasksCount);
                 }
             });
         });

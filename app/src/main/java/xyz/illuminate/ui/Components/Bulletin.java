@@ -16,6 +16,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.text.TextUtils;
+import android.text.method.LinkMovementMethod;
 import android.util.Property;
 import android.util.TypedValue;
 import android.view.GestureDetector;
@@ -61,45 +62,11 @@ public class Bulletin {
     public static final int TYPE_ERROR = 1;
     public static final int TYPE_BIO_CHANGED = 2;
     public static final int TYPE_NAME_CHANGED = 3;
-    private static final HashMap<FrameLayout, Delegate> delegates = new HashMap<>();
-    @SuppressLint("StaticFieldLeak")
-    private static Bulletin visibleBulletin;
-    private final Layout layout;
-    private final ParentLayout parentLayout;
-    private final FrameLayout containerLayout;
+    public static final int TYPE_ERROR_SUBTITLE = 4;
+    public static final int TYPE_APP_ICON = 5;
+
     public int tag;
-    public int currentBottomOffset;
-    private int duration;
-    private boolean showing;
-    private boolean canHide;
-    private Delegate currentDelegate;
-    private Layout.Transition layoutTransition;
-    private final Runnable hideRunnable = this::hide;
-
-    private Bulletin() {
-        layout = null;
-        parentLayout = null;
-        containerLayout = null;
-    }
-    private Bulletin(@NonNull FrameLayout containerLayout, @NonNull Layout layout, int duration) {
-        this.layout = layout;
-        this.parentLayout = new ParentLayout(layout) {
-            @Override
-            protected void onPressedStateChanged(boolean pressed) {
-                setCanHide(!pressed);
-                if (containerLayout.getParent() != null) {
-                    containerLayout.getParent().requestDisallowInterceptTouchEvent(pressed);
-                }
-            }
-
-            @Override
-            protected void onHide() {
-                hide();
-            }
-        };
-        this.containerLayout = containerLayout;
-        this.duration = duration;
-    }
+    public int hash;
 
     public static Bulletin make(@NonNull FrameLayout containerLayout, @NonNull Layout contentLayout, int duration) {
         return new Bulletin(containerLayout, contentLayout, duration);
@@ -109,7 +76,9 @@ public class Bulletin {
     public static Bulletin make(@NonNull BaseFragment fragment, @NonNull Layout contentLayout, int duration) {
         if (fragment instanceof ChatActivity) {
             contentLayout.setWideScreenParams(ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.RIGHT);
-        }
+        } /*else if (fragment instanceof DialogsActivity) {
+            contentLayout.setWideScreenParams(ViewGroup.LayoutParams.MATCH_PARENT, Gravity.NO_GRAVITY);
+        }*/
         return new Bulletin(fragment.getLayoutContainer(), contentLayout, duration);
     }
 
@@ -134,35 +103,51 @@ public class Bulletin {
         }
     }
 
+    private static final HashMap<FrameLayout, Delegate> delegates = new HashMap<>();
+
+    @SuppressLint("StaticFieldLeak")
+    private static Bulletin visibleBulletin;
+
+    private final Layout layout;
+    private final ParentLayout parentLayout;
+    private final FrameLayout containerLayout;
+    private final Runnable hideRunnable = this::hide;
+    private int duration;
+
+    private boolean showing;
+    private boolean canHide;
+    public int currentBottomOffset;
+    private Delegate currentDelegate;
+    private Layout.Transition layoutTransition;
+
+    private Bulletin() {
+        layout = null;
+        parentLayout = null;
+        containerLayout = null;
+    }
+
+    private Bulletin(@NonNull FrameLayout containerLayout, @NonNull Layout layout, int duration) {
+        this.layout = layout;
+        this.parentLayout = new ParentLayout(layout) {
+            @Override
+            protected void onPressedStateChanged(boolean pressed) {
+                setCanHide(!pressed);
+                if (containerLayout.getParent() != null) {
+                    containerLayout.getParent().requestDisallowInterceptTouchEvent(pressed);
+                }
+            }
+
+            @Override
+            protected void onHide() {
+                hide();
+            }
+        };
+        this.containerLayout = containerLayout;
+        this.duration = duration;
+    }
+
     public static Bulletin getVisibleBulletin() {
         return visibleBulletin;
-    }
-
-    private static boolean isTransitionsEnabled() {
-        return SharedConfig.animationsEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2;
-    }
-
-    //region Offset Providers
-    public static void addDelegate(@NonNull BaseFragment fragment, @NonNull Delegate delegate) {
-        final FrameLayout containerLayout = fragment.getLayoutContainer();
-        if (containerLayout != null) {
-            addDelegate(containerLayout, delegate);
-        }
-    }
-
-    public static void addDelegate(@NonNull FrameLayout containerLayout, @NonNull Delegate delegate) {
-        delegates.put(containerLayout, delegate);
-    }
-
-    public static void removeDelegate(@NonNull BaseFragment fragment) {
-        final FrameLayout containerLayout = fragment.getLayoutContainer();
-        if (containerLayout != null) {
-            removeDelegate(containerLayout);
-        }
-    }
-
-    public static void removeDelegate(@NonNull FrameLayout containerLayout) {
-        delegates.remove(containerLayout);
     }
 
     public void setDuration(int duration) {
@@ -172,6 +157,11 @@ public class Bulletin {
     public Bulletin show() {
         if (!showing && containerLayout != null) {
             showing = true;
+
+            CharSequence text = layout.getAccessibilityText();
+            if (text != null) {
+                AndroidUtilities.makeAccessibilityAnnouncement(text);
+            }
 
             if (layout.getParent() != parentLayout) {
                 throw new IllegalStateException("Layout has incorrect parent");
@@ -196,11 +186,11 @@ public class Bulletin {
                         }
                         if (isTransitionsEnabled()) {
                             ensureLayoutTransitionCreated();
-                            layout.transitionRunning = true;
+                            layout.transitionRunningEnter = true;
                             layout.delegate = currentDelegate;
                             layout.invalidate();
                             layoutTransition.animateEnter(layout, layout::onEnterTransitionStart, () -> {
-                                layout.transitionRunning = false;
+                                layout.transitionRunningEnter = false;
                                 layout.onEnterTransitionEnd();
                                 setCanHide(true);
                             }, offset -> {
@@ -280,7 +270,7 @@ public class Bulletin {
             if (ViewCompat.isLaidOut(layout)) {
                 layout.removeCallbacks(hideRunnable);
                 if (animated) {
-                    layout.transitionRunning = true;
+                    layout.transitionRunningExit = true;
                     layout.delegate = currentDelegate;
                     layout.invalidate();
                     if (duration >= 0) {
@@ -295,7 +285,7 @@ public class Bulletin {
                             currentDelegate.onOffsetChange(0);
                             currentDelegate.onHide(this);
                         }
-                        layout.transitionRunning = false;
+                        layout.transitionRunningExit = false;
                         layout.onExitTransitionEnd();
                         layout.onHide();
                         containerLayout.removeView(parentLayout);
@@ -331,6 +321,10 @@ public class Bulletin {
         return layout;
     }
 
+    private static boolean isTransitionsEnabled() {
+        return SharedConfig.getPreferences().getBoolean("view_animations", true) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2;
+    }
+
     public void updatePosition() {
         if (layout != null) {
             layout.updatePosition();
@@ -346,22 +340,6 @@ public class Bulletin {
     @SuppressLint("RtlHardcoded")
     @IntDef(value = {Gravity.LEFT, Gravity.RIGHT, Gravity.CENTER_HORIZONTAL, Gravity.NO_GRAVITY})
     private @interface GravityDef {
-    }
-
-    public interface Delegate {
-
-        default int getBottomOffset(int tag) {
-            return 0;
-        }
-
-        default void onOffsetChange(float offset) {
-        }
-
-        default void onShow(Bulletin bulletin) {
-        }
-
-        default void onHide(Bulletin bulletin) {
-        }
     }
 
     private static abstract class ParentLayout extends FrameLayout {
@@ -486,40 +464,63 @@ public class Bulletin {
 
         protected abstract void onHide();
     }
+
+    //region Offset Providers
+    public static void addDelegate(@NonNull BaseFragment fragment, @NonNull Delegate delegate) {
+        final FrameLayout containerLayout = fragment.getLayoutContainer();
+        if (containerLayout != null) {
+            addDelegate(containerLayout, delegate);
+        }
+    }
+
+    public static void addDelegate(@NonNull FrameLayout containerLayout, @NonNull Delegate delegate) {
+        delegates.put(containerLayout, delegate);
+    }
+
+    public static void removeDelegate(@NonNull BaseFragment fragment) {
+        final FrameLayout containerLayout = fragment.getLayoutContainer();
+        if (containerLayout != null) {
+            removeDelegate(containerLayout);
+        }
+    }
+
+    public static void removeDelegate(@NonNull FrameLayout containerLayout) {
+        delegates.remove(containerLayout);
+    }
+
+    public interface Delegate {
+
+        default int getBottomOffset(int tag) {
+            return 0;
+        }
+
+        default void onOffsetChange(float offset) {
+        }
+
+        default void onShow(Bulletin bulletin) {
+        }
+
+        default void onHide(Bulletin bulletin) {
+        }
+    }
     //endregion
 
     //region Layouts
     public abstract static class Layout extends FrameLayout {
 
-        public final static FloatPropertyCompat<Layout> IN_OUT_OFFSET_Y = new FloatPropertyCompat<Layout>("offsetY") {
-            @Override
-            public float getValue(Layout object) {
-                return object.inOutOffset;
-            }
-
-            @Override
-            public void setValue(Layout object, float value) {
-                object.setInOutOffset(value);
-            }
-        };
-        public final static Property<Layout, Float> IN_OUT_OFFSET_Y2 = new AnimationProperties.FloatProperty<Layout>("offsetY") {
-
-            @Override
-            public Float get(Layout layout) {
-                return layout.inOutOffset;
-            }
-
-            @Override
-            public void setValue(Layout object, float value) {
-                object.setInOutOffset(value);
-            }
-        };
         private final List<Callback> callbacks = new ArrayList<>();
-        public boolean transitionRunning;
-        public float inOutOffset;
-        protected Bulletin bulletin;
+        public boolean transitionRunningEnter;
+        public boolean transitionRunningExit;
         Delegate delegate;
+        public float inOutOffset;
+
+        protected Bulletin bulletin;
         Drawable background;
+
+        public boolean isTransitionRunning() {
+            return transitionRunningEnter || transitionRunningExit;
+        }
+
         @WidthDef
         private int wideScreenWidth = ViewGroup.LayoutParams.WRAP_CONTENT;
         @GravityDef
@@ -537,6 +538,31 @@ public class Bulletin {
         protected void setBackground(int color) {
             background = Theme.createRoundRectDrawable(AndroidUtilities.dp(6), color);
         }
+
+        public final static FloatPropertyCompat<Layout> IN_OUT_OFFSET_Y = new FloatPropertyCompat<Layout>("offsetY") {
+            @Override
+            public float getValue(Layout object) {
+                return object.inOutOffset;
+            }
+
+            @Override
+            public void setValue(Layout object, float value) {
+                object.setInOutOffset(value);
+            }
+        };
+
+        public final static Property<Layout, Float> IN_OUT_OFFSET_Y2 = new AnimationProperties.FloatProperty<Layout>("offsetY") {
+
+            @Override
+            public Float get(Layout layout) {
+                return layout.inOutOffset;
+            }
+
+            @Override
+            public void setValue(Layout object, float value) {
+                object.setInOutOffset(value);
+            }
+        };
 
         @Override
         protected void onConfigurationChanged(Configuration newConfig) {
@@ -584,6 +610,10 @@ public class Bulletin {
             } else {
                 return wideScreenGravity != Gravity.RIGHT;
             }
+        }
+
+        protected CharSequence getAccessibilityText() {
+            return null;
         }
 
         public Bulletin getBulletin() {
@@ -669,40 +699,6 @@ public class Bulletin {
             setTranslationY(-tranlsation + inOutOffset);
         }
 
-        //region Transitions
-        @NonNull
-        public Transition createTransition() {
-            return new SpringTransition();
-        }
-        //endregion
-
-        private void setInOutOffset(float offset) {
-            inOutOffset = offset;
-            updatePosition();
-        }
-
-        @Override
-        protected void dispatchDraw(Canvas canvas) {
-            background.setBounds(AndroidUtilities.dp(8), AndroidUtilities.dp(8), getMeasuredWidth() - AndroidUtilities.dp(8), getMeasuredHeight() - AndroidUtilities.dp(8));
-            if (transitionRunning && delegate != null) {
-                int clipBottom = ((View) getParent()).getMeasuredHeight() - delegate.getBottomOffset(bulletin.tag);
-                int viewBottom = (int) (getY() + getMeasuredHeight());
-                canvas.save();
-                canvas.clipRect(0, 0, getMeasuredWidth(), getMeasuredHeight() - (viewBottom - clipBottom));
-                background.draw(canvas);
-                super.dispatchDraw(canvas);
-                canvas.restore();
-                invalidate();
-            } else {
-                background.draw(canvas);
-                super.dispatchDraw(canvas);
-            }
-        }
-
-        protected int getThemedColor(String key) {
-            return Theme.getColor(key);
-        }
-
         public interface Callback {
 
             void onAttach(@NonNull Layout layout, @NonNull Bulletin bulletin);
@@ -720,6 +716,13 @@ public class Bulletin {
             void onExitTransitionStart(@NonNull Layout layout);
 
             void onExitTransitionEnd(@NonNull Layout layout);
+        }
+        //endregion
+
+        //region Transitions
+        @NonNull
+        public Transition createTransition() {
+            return new SpringTransition();
         }
 
         public interface Transition {
@@ -845,6 +848,36 @@ public class Bulletin {
                 }
             }
         }
+
+        private void setInOutOffset(float offset) {
+            inOutOffset = offset;
+            updatePosition();
+        }
+
+        @Override
+        protected void dispatchDraw(Canvas canvas) {
+            if (bulletin == null) {
+                return;
+            }
+            background.setBounds(AndroidUtilities.dp(8), AndroidUtilities.dp(8), getMeasuredWidth() - AndroidUtilities.dp(8), getMeasuredHeight() - AndroidUtilities.dp(8));
+            if (isTransitionRunning() && delegate != null) {
+                int clipBottom = ((View) getParent()).getMeasuredHeight() - delegate.getBottomOffset(bulletin.tag);
+                int viewBottom = (int) (getY() + getMeasuredHeight());
+                canvas.save();
+                canvas.clipRect(0, 0, getMeasuredWidth(), getMeasuredHeight() - (viewBottom - clipBottom));
+                background.draw(canvas);
+                super.dispatchDraw(canvas);
+                canvas.restore();
+                invalidate();
+            } else {
+                background.draw(canvas);
+                super.dispatchDraw(canvas);
+            }
+        }
+
+        protected int getThemedColor(String key) {
+            return Theme.getColor(key);
+        }
         //endregion
     }
 
@@ -918,6 +951,10 @@ public class Bulletin {
             textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
             addView(textView, LayoutHelper.createFrameRelatively(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.START | Gravity.CENTER_VERTICAL, 56, 0, 16, 0));
         }
+
+        public CharSequence getAccessibilityText() {
+            return textView.getText();
+        }
     }
 
     @SuppressLint("ViewConstructor")
@@ -936,6 +973,10 @@ public class Bulletin {
             textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
             textView.setTypeface(Typeface.SANS_SERIF);
             addView(textView, LayoutHelper.createFrameRelatively(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.START | Gravity.CENTER_VERTICAL, 56, 0, 16, 0));
+        }
+
+        public CharSequence getAccessibilityText() {
+            return textView.getText();
         }
     }
 
@@ -967,11 +1008,16 @@ public class Bulletin {
             subtitleTextView = new TextView(context);
             subtitleTextView.setMaxLines(2);
             subtitleTextView.setTextColor(undoInfoColor);
+            subtitleTextView.setLinkTextColor(getThemedColor(Theme.key_undo_cancelColor));
+            subtitleTextView.setMovementMethod(new LinkMovementMethod());
             subtitleTextView.setTypeface(Typeface.SANS_SERIF);
             subtitleTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
             linearLayout.addView(subtitleTextView);
         }
 
+        public CharSequence getAccessibilityText() {
+            return titleTextView.getText() + ".\n" + subtitleTextView.getText();
+        }
     }
 
     public static class TwoLineLottieLayout extends ButtonLayout {
@@ -992,6 +1038,7 @@ public class Bulletin {
             addView(imageView, LayoutHelper.createFrameRelatively(56, 48, Gravity.START | Gravity.CENTER_VERTICAL));
 
             final int undoInfoColor = getThemedColor(Theme.key_undo_infoColor);
+            final int undoLinkColor = getThemedColor(Theme.key_buttonBackgroundBlue);
 
             final LinearLayout linearLayout = new LinearLayout(context);
             linearLayout.setOrientation(LinearLayout.VERTICAL);
@@ -1006,6 +1053,7 @@ public class Bulletin {
 
             subtitleTextView = new TextView(context);
             subtitleTextView.setTextColor(undoInfoColor);
+            subtitleTextView.setLinkTextColor(undoLinkColor);
             subtitleTextView.setTypeface(Typeface.SANS_SERIF);
             subtitleTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
             linearLayout.addView(subtitleTextView);
@@ -1027,6 +1075,10 @@ public class Bulletin {
                 imageView.setLayerColor(layer + ".**", textColor);
             }
         }
+
+        public CharSequence getAccessibilityText() {
+            return titleTextView.getText() + ".\n" + subtitleTextView.getText();
+        }
     }
 
     public static class LottieLayout extends ButtonLayout {
@@ -1043,14 +1095,15 @@ public class Bulletin {
             imageView.setScaleType(ImageView.ScaleType.CENTER);
             addView(imageView, LayoutHelper.createFrameRelatively(56, 48, Gravity.START | Gravity.CENTER_VERTICAL));
 
-            textView = new TextView(context);
+            textView = new LinkSpanDrawable.LinksTextView(context);
             textView.setSingleLine();
             textView.setTypeface(Typeface.SANS_SERIF);
             textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
             textView.setEllipsize(TextUtils.TruncateAt.END);
             textView.setPadding(0, AndroidUtilities.dp(8), 0, AndroidUtilities.dp(8));
-            addView(textView, LayoutHelper.createFrameRelatively(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.START | Gravity.CENTER_VERTICAL, 56, 0, 16, 0));
+            addView(textView, LayoutHelper.createFrameRelatively(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.START | Gravity.CENTER_VERTICAL, 56, 0, 8, 0));
 
+            textView.setLinkTextColor(getThemedColor(Theme.key_undo_cancelColor));
             setTextColor(getThemedColor(Theme.key_undo_infoColor));
             setBackground(getThemedColor(Theme.key_undo_background));
         }
@@ -1085,6 +1138,10 @@ public class Bulletin {
 
         public void setIconPaddingBottom(int paddingBottom) {
             imageView.setLayoutParams(LayoutHelper.createFrameRelatively(56, 48 - paddingBottom, Gravity.START | Gravity.CENTER_VERTICAL, 0, 0, 0, paddingBottom));
+        }
+
+        public CharSequence getAccessibilityText() {
+            return textView.getText();
         }
     }
     //endregion
@@ -1137,6 +1194,7 @@ public class Bulletin {
         private Runnable delayedAction;
 
         private Bulletin bulletin;
+        private TextView undoTextView;
         private boolean isUndone;
 
         public UndoButton(@NonNull Context context, boolean text) {
@@ -1145,7 +1203,7 @@ public class Bulletin {
             final int undoCancelColor = getThemedColor(Theme.key_undo_cancelColor);
 
             if (text) {
-                TextView undoTextView = new TextView(context);
+                undoTextView = new TextView(context);
                 undoTextView.setOnClickListener(v -> undo());
                 final int leftInset = LocaleController.isRTL ? AndroidUtilities.dp(16) : 0;
                 final int rightInset = LocaleController.isRTL ? 0 : AndroidUtilities.dp(16);
@@ -1166,6 +1224,13 @@ public class Bulletin {
                 ViewHelper.setPaddingRelative(undoImageView, 0, 12, 0, 12);
                 addView(undoImageView, LayoutHelper.createFrameRelatively(56, 48, Gravity.CENTER_VERTICAL));
             }
+        }
+
+        public UndoButton setText(CharSequence text) {
+            if (undoTextView != null) {
+                undoTextView.setText(text);
+            }
+            return this;
         }
 
         public void undo() {

@@ -14,9 +14,6 @@ import java.util.Locale;
 
 public class SharedConfig {
 
-    public final static int PERFORMANCE_CLASS_LOW = 0;
-    public final static int PERFORMANCE_CLASS_AVERAGE = 1;
-    public final static int PERFORMANCE_CLASS_HIGH = 2;
     private static final Object localIdSync = new Object();
     public static boolean animationsEnabled = true;
     public static boolean debugLinesEnabled = false;
@@ -25,32 +22,14 @@ public class SharedConfig {
     public static boolean smoothKeyboard = true;
     public static boolean isGameVersionSelected;
     public static boolean disableDrawerAnimations = false;
-    public static boolean useSystemEmoji;
-    public static boolean raiseToSpeak;
-    public static boolean streamMkv;
-    public static int distanceSystemType;
-    public static boolean saveToGallery = true;
-    public static boolean streamAllVideo = false;
-    public static boolean shuffleMusic;
-    public static int repeatMode;
-    public static boolean directShare;
-    public static String directShareHash;
-    public static boolean playOrderReversed;
-    public static boolean streamMedia;
-    public static boolean pauseMusicOnRecord;
     public static float fontSize = 16.0f;
-    public static boolean isWaitingForPasscodeEnter;
-    public static boolean chatBubbles;
-    public static float bubbleRadius = 5.0f;
-    public static boolean autoplayGifs;
-    public static boolean autoplayVideo;
-    public static boolean loopStickers;
     public static int mapPreviewType;
     public static int animationsEnterDuration;
     public static int animationsExitDuration;
     public static String storageCacheDir;
     public static String gameVersion;
     private static int lastLocalId = -210000;
+
     private static int devicePerformanceClass;
 
     static {
@@ -97,6 +76,20 @@ public class SharedConfig {
         return false;
     }
 
+
+    public final static int PERFORMANCE_CLASS_LOW = 0;
+    public final static int PERFORMANCE_CLASS_AVERAGE = 1;
+    public final static int PERFORMANCE_CLASS_HIGH = 2;
+
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef({
+            PERFORMANCE_CLASS_LOW,
+            PERFORMANCE_CLASS_AVERAGE,
+            PERFORMANCE_CLASS_HIGH
+    })
+    public @interface PerformanceClass {
+    }
+
     @PerformanceClass
     public static int getDevicePerformanceClass() {
         if (devicePerformanceClass == -1) {
@@ -127,20 +120,10 @@ public class SharedConfig {
                 devicePerformanceClass = PERFORMANCE_CLASS_HIGH;
             }
             if (BuildVars.LOGS_ENABLED) {
-                FileLog.d("device performance info (cpu_count = " + cpuCount + ", freq = " + maxCpuFreq + ", memoryClass = " + memoryClass + ", android version " + androidVersion + ")");
+                FileLog.d("device performance info selected_class = " + devicePerformanceClass + " (cpu_count = " + cpuCount + ", freq = " + maxCpuFreq + ", memoryClass = " + memoryClass + ", android version " + androidVersion + ")");
             }
         }
 
         return devicePerformanceClass;
     }
-
-    @Retention(RetentionPolicy.SOURCE)
-    @IntDef({
-            PERFORMANCE_CLASS_LOW,
-            PERFORMANCE_CLASS_AVERAGE,
-            PERFORMANCE_CLASS_HIGH
-    })
-    public @interface PerformanceClass {
-    }
-
 }

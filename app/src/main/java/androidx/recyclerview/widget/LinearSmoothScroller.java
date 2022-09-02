@@ -37,6 +37,12 @@ import xyz.illuminate.app.BuildVars;
  */
 public class LinearSmoothScroller extends RecyclerView.SmoothScroller {
 
+    private static final boolean DEBUG = BuildVars.DEBUG_VERSION;
+
+    private static final float MILLISECONDS_PER_INCH = 25f;
+
+    protected static final int TARGET_SEEK_SCROLL_DISTANCE_PX = 10000;
+
     /**
      * Align child view's left or top with parent view's left or top
      *
@@ -45,6 +51,7 @@ public class LinearSmoothScroller extends RecyclerView.SmoothScroller {
      * @see #calculateDyToMakeVisible(View, int)
      */
     public static final int SNAP_TO_START = -1;
+
     /**
      * Align child view's right or bottom with parent view's right or bottom
      *
@@ -53,6 +60,7 @@ public class LinearSmoothScroller extends RecyclerView.SmoothScroller {
      * @see #calculateDyToMakeVisible(View, int)
      */
     public static final int SNAP_TO_END = 1;
+
     /**
      * <p>Decides if the child should be snapped from start or end, depending on where it
      * currently is in relation to its parent.</p>
@@ -64,24 +72,25 @@ public class LinearSmoothScroller extends RecyclerView.SmoothScroller {
      * @see #calculateDyToMakeVisible(View, int)
      */
     public static final int SNAP_TO_ANY = 0;
-    private static final boolean DEBUG = BuildVars.DEBUG_VERSION;
-    private static final float MILLISECONDS_PER_INCH = 25f;
-    private static final int TARGET_SEEK_SCROLL_DISTANCE_PX = 10000;
+
     // Trigger a scroll to a further distance than TARGET_SEEK_SCROLL_DISTANCE_PX so that if target
     // view is not laid out until interim target position is reached, we can detect the case before
     // scrolling slows down and reschedule another interim target scroll
-    private static final float TARGET_SEEK_EXTRA_SCROLL_RATIO = 1.2f;
+    protected static final float TARGET_SEEK_EXTRA_SCROLL_RATIO = 1.2f;
 
     protected final LinearInterpolator mLinearInterpolator = new LinearInterpolator();
 
     protected final DecelerateInterpolator mDecelerateInterpolator = new DecelerateInterpolator();
-    private final DisplayMetrics mDisplayMetrics;
+
     protected PointF mTargetVector;
+
+    private final DisplayMetrics mDisplayMetrics;
+    private boolean mHasCalculatedMillisPerPixel = false;
+    private float mMillisPerPixel;
+
     // Temporary variables to keep track of the interim scroll target. These values do not
     // point to a real item position, rather point to an estimated location pixels.
     protected int mInterimTargetDx = 0, mInterimTargetDy = 0;
-    private boolean mHasCalculatedMillisPerPixel = false;
-    private float mMillisPerPixel;
 
     public LinearSmoothScroller(Context context) {
         mDisplayMetrics = context.getResources().getDisplayMetrics();

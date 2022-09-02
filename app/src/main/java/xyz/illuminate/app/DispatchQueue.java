@@ -1,3 +1,11 @@
+/*
+ * This is the source code of Telegram for Android v. 7.x.x.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Nikolai Kudashov, 2013-2020.
+ */
+
 package xyz.illuminate.app;
 
 import android.os.Handler;
@@ -9,9 +17,11 @@ import java.util.concurrent.CountDownLatch;
 
 public class DispatchQueue extends Thread {
 
-    private final CountDownLatch syncLatch = new CountDownLatch(1);
     private volatile Handler handler = null;
+    private CountDownLatch syncLatch = new CountDownLatch(1);
     private long lastTaskTime;
+    private static int indexPointer = 0;
+    public final int index = indexPointer++;
 
     public DispatchQueue(final String threadName) {
         this(threadName, true);
@@ -42,7 +52,7 @@ public class DispatchQueue extends Thread {
             syncLatch.await();
             handler.removeCallbacks(runnable);
         } catch (Exception e) {
-            FileLog.e(e);
+            FileLog.e(e, false);
         }
     }
 
@@ -53,7 +63,7 @@ public class DispatchQueue extends Thread {
                 handler.removeCallbacks(runnables[i]);
             }
         } catch (Exception e) {
-            FileLog.e(e);
+            FileLog.e(e, false);
         }
     }
 
@@ -66,7 +76,7 @@ public class DispatchQueue extends Thread {
         try {
             syncLatch.await();
         } catch (Exception e) {
-            FileLog.e(e);
+            FileLog.e(e, false);
         }
         if (delay <= 0) {
             return handler.post(runnable);
@@ -80,7 +90,7 @@ public class DispatchQueue extends Thread {
             syncLatch.await();
             handler.removeCallbacksAndMessages(null);
         } catch (Exception e) {
-            FileLog.e(e);
+            FileLog.e(e, false);
         }
     }
 
@@ -99,13 +109,19 @@ public class DispatchQueue extends Thread {
     @Override
     public void run() {
         Looper.prepare();
-        handler = new Handler() {
-            @Override
-            public void handleMessage(Message msg) {
-                DispatchQueue.this.handleMessage(msg);
-            }
-        };
+        handler = new Handler(Looper.myLooper(), msg -> {
+            DispatchQueue.this.handleMessage(msg);
+            return true;
+        });
         syncLatch.countDown();
         Looper.loop();
+    }
+
+    public boolean isReady() {
+        return syncLatch.getCount() == 0;
+    }
+
+    public Handler getHandler() {
+        return handler;
     }
 }

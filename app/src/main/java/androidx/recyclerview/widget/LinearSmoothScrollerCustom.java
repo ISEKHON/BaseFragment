@@ -1,3 +1,11 @@
+/*
+ * This is the source code of Telegram for Android v. 5.x.x.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Nikolai Kudashov, 2013-2018.
+ */
+
 package androidx.recyclerview.widget;
 
 import android.content.Context;
@@ -12,21 +20,38 @@ import xyz.illuminate.app.AndroidUtilities;
 
 public class LinearSmoothScrollerCustom extends RecyclerView.SmoothScroller {
 
+    private static final float MILLISECONDS_PER_INCH = 25f;
+
+    private static final int TARGET_SEEK_SCROLL_DISTANCE_PX = 10000;
+
+    private static final float TARGET_SEEK_EXTRA_SCROLL_RATIO = 1.2f;
+
+    protected final LinearInterpolator mLinearInterpolator = new LinearInterpolator();
+
+    protected final DecelerateInterpolator mDecelerateInterpolator = new DecelerateInterpolator(1.5f);
+
+    protected PointF mTargetVector;
+
+    private final float MILLISECONDS_PER_PX;
+
+    protected int mInterimTargetDx = 0, mInterimTargetDy = 0;
+    private int scrollPosition;
+
     public static final int POSITION_MIDDLE = 0;
     public static final int POSITION_END = 1;
     public static final int POSITION_TOP = 2;
-    private static final float MILLISECONDS_PER_INCH = 25f;
-    private static final int TARGET_SEEK_SCROLL_DISTANCE_PX = 10000;
-    private static final float TARGET_SEEK_EXTRA_SCROLL_RATIO = 1.2f;
-    protected final LinearInterpolator mLinearInterpolator = new LinearInterpolator();
-    protected final DecelerateInterpolator mDecelerateInterpolator = new DecelerateInterpolator(1.5f);
-    private final float MILLISECONDS_PER_PX;
-    protected PointF mTargetVector;
-    protected int mInterimTargetDx = 0, mInterimTargetDy = 0;
-    private final int scrollPosition;
+
+    private float durationMultiplier = 1f;
+    private int offset;
 
     public LinearSmoothScrollerCustom(Context context, int position) {
         MILLISECONDS_PER_PX = MILLISECONDS_PER_INCH / context.getResources().getDisplayMetrics().densityDpi;
+        scrollPosition = position;
+    }
+
+    public LinearSmoothScrollerCustom(Context context, int position, float durationMultiplier) {
+        this.durationMultiplier = durationMultiplier;
+        MILLISECONDS_PER_PX = MILLISECONDS_PER_INCH / context.getResources().getDisplayMetrics().densityDpi * durationMultiplier;
         scrollPosition = position;
     }
 
@@ -35,12 +60,18 @@ public class LinearSmoothScrollerCustom extends RecyclerView.SmoothScroller {
 
     }
 
+    public void setOffset(int offset) {
+        this.offset = offset;
+    }
+
     @Override
     protected void onTargetFound(View targetView, RecyclerView.State state, Action action) {
         final int dy = calculateDyToMakeVisible(targetView);
         final int time = calculateTimeForDeceleration(dy);
         if (time > 0) {
-            action.update(0, -dy, Math.max(400, time), mDecelerateInterpolator);
+            action.update(0, -dy, Math.max((int) (400 * durationMultiplier), time), mDecelerateInterpolator);
+        } else {
+            onEnd();
         }
     }
 
@@ -112,13 +143,13 @@ public class LinearSmoothScrollerCustom extends RecyclerView.SmoothScroller {
         int boxSize = end - start;
         int viewSize = bottom - top;
         if (scrollPosition == POSITION_TOP) {
-            start = layoutManager.getPaddingTop();
+            start = layoutManager.getPaddingTop() + offset;
         } else if (viewSize > boxSize) {
             start = 0;
         } else if (scrollPosition == POSITION_MIDDLE) {
             start = (boxSize - viewSize) / 2;
         } else {
-            start = (layoutManager.getPaddingTop() - AndroidUtilities.dp(88));
+            start = (layoutManager.getPaddingTop() + offset - AndroidUtilities.dp(88));
         }
         end = start + viewSize;
         final int dtStart = start - top;
@@ -139,5 +170,9 @@ public class LinearSmoothScrollerCustom extends RecyclerView.SmoothScroller {
             return ((ScrollVectorProvider) layoutManager).computeScrollVectorForPosition(targetPosition);
         }
         return null;
+    }
+
+    public void onEnd() {
+
     }
 }

@@ -133,6 +133,10 @@ public class FileLoader {
         return true;
     }
 
+    public static String checkDirectory(int mediaDirCache) {
+        return "/sdcard/Android/data/xyz.illuminate.app/files/";
+    }
+
     private boolean isExternalStorageDocument(Uri uri) {
         return "com.android.externalstorage.documents".equals(uri.getAuthority());
     }

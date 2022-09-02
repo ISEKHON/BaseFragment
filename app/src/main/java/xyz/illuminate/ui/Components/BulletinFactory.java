@@ -1,31 +1,17 @@
 package xyz.illuminate.ui.Components;
 
 import android.content.Context;
+import android.graphics.drawable.Drawable;
+import android.util.TypedValue;
 import android.widget.FrameLayout;
 
 import androidx.annotation.CheckResult;
 
 import xyz.illuminate.app.AndroidUtilities;
-import xyz.illuminate.app.LocaleController;
 import xyz.illuminate.app.R;
 import xyz.illuminate.ui.ActionBar.BaseFragment;
 
 public final class BulletinFactory {
-
-    public static final int ICON_TYPE_NOT_FOUND = 0;
-    public static final int ICON_TYPE_WARNING = 1;
-    private final BaseFragment fragment;
-    private final FrameLayout containerLayout;
-
-    private BulletinFactory(BaseFragment fragment) {
-        this.fragment = fragment;
-        this.containerLayout = null;
-    }
-
-    private BulletinFactory(FrameLayout containerLayout) {
-        this.containerLayout = containerLayout;
-        this.fragment = null;
-    }
 
     public static BulletinFactory of(BaseFragment fragment) {
         return new BulletinFactory(fragment);
@@ -39,29 +25,20 @@ public final class BulletinFactory {
         return fragment != null && fragment.getParentActivity() != null && fragment.getLayoutContainer() != null;
     }
 
-    @CheckResult
-    public static Bulletin createBanBulletin(BaseFragment fragment, boolean banned) {
-        final Bulletin.LottieLayout layout = new Bulletin.LottieLayout(fragment.getParentActivity());
-        final String text;
-        if (banned) {
-            layout.setAnimation(R.raw.ic_ban, "Hand");
-            text = "User Blocked";
-        } else {
-            layout.setAnimation(R.raw.ic_unban, "Main", "Finger 1", "Finger 2", "Finger 3", "Finger 4");
-            text = "User Unblocked";
-        }
-        layout.textView.setText(AndroidUtilities.replaceTags(text));
-        return Bulletin.make(fragment, layout, Bulletin.DURATION_SHORT);
+    public static final int ICON_TYPE_NOT_FOUND = 0;
+    public static final int ICON_TYPE_WARNING = 1;
+
+    private final BaseFragment fragment;
+    private final FrameLayout containerLayout;
+
+    private BulletinFactory(BaseFragment fragment) {
+        this.fragment = fragment;
+        this.containerLayout = null;
     }
 
-    @CheckResult
-    public static Bulletin createCopyLinkBulletin(BaseFragment fragment) {
-        return of(fragment).createCopyLinkBulletin();
-    }
-
-    @CheckResult
-    public static Bulletin createCopyLinkBulletin(FrameLayout containerView) {
-        return of(containerView).createCopyLinkBulletin();
+    private BulletinFactory(FrameLayout containerLayout) {
+        this.containerLayout = containerLayout;
+        this.fragment = null;
     }
 
     public Bulletin createSimpleBulletin(int iconRawId, String text) {
@@ -73,16 +50,33 @@ public final class BulletinFactory {
         return create(layout, Bulletin.DURATION_SHORT);
     }
 
-    @CheckResult
-    public Bulletin createDownloadBulletin(FileType fileType) {
-        return createDownloadBulletin(fileType);
+    public Bulletin createSimpleBulletin(int iconRawId, CharSequence text, CharSequence subtext) {
+        final Bulletin.TwoLineLottieLayout layout = new Bulletin.TwoLineLottieLayout(getContext());
+        layout.setAnimation(iconRawId, 36, 36);
+        layout.titleTextView.setText(text);
+        layout.subtitleTextView.setText(subtext);
+        return create(layout, Bulletin.DURATION_SHORT);
     }
 
-    public Bulletin createReportSent() {
+    public Bulletin createSimpleBulletin(int iconRawId, CharSequence text, CharSequence button, Runnable onButtonClick) {
         final Bulletin.LottieLayout layout = new Bulletin.LottieLayout(getContext());
-        layout.setAnimation(R.raw.chats_infotip);
-        layout.textView.setText("Report Chat Sent");
+        layout.setAnimation(iconRawId, 36, 36);
+        layout.textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        layout.textView.setSingleLine(false);
+        layout.textView.setMaxLines(3);
+        layout.textView.setText(text);
+        layout.setButton(new Bulletin.UndoButton(getContext(), true).setText(button).setUndoAction(onButtonClick));
         return create(layout, Bulletin.DURATION_SHORT);
+    }
+
+    public Bulletin createSimpleBulletin(Drawable drawable, CharSequence text, String button, Runnable onButtonClick) {
+        final Bulletin.LottieLayout layout = new Bulletin.LottieLayout(getContext());
+        layout.imageView.setImageDrawable(drawable);
+        layout.textView.setText(text);
+        layout.textView.setSingleLine(false);
+        layout.textView.setMaxLines(2);
+        layout.setButton(new Bulletin.UndoButton(getContext(), true).setText(button).setUndoAction(onButtonClick));
+        return create(layout, Bulletin.DURATION_LONG);
     }
 
     public Bulletin createErrorBulletin(CharSequence errorMessage) {
@@ -94,8 +88,24 @@ public final class BulletinFactory {
         return create(layout, Bulletin.DURATION_SHORT);
     }
 
+    public Bulletin createErrorBulletinSubtitle(CharSequence errorMessage, CharSequence errorDescription) {
+        Bulletin.TwoLineLottieLayout layout = new Bulletin.TwoLineLottieLayout(getContext());
+        layout.setAnimation(R.raw.chats_infotip);
+        layout.titleTextView.setText(errorMessage);
+        layout.subtitleTextView.setText(errorDescription);
+        return create(layout, Bulletin.DURATION_SHORT);
+    }
+
+    @CheckResult
+    public Bulletin createCopyLinkBulletin() {
+        return createCopyLinkBulletin(false);
+    }
+
     @CheckResult
     public Bulletin createCopyBulletin(String message) {
+        if (!AndroidUtilities.shouldShowClipboardToast()) {
+            return new Bulletin.EmptyBulletin();
+        }
         final Bulletin.LottieLayout layout = new Bulletin.LottieLayout(getContext());
         layout.setAnimation(R.raw.copy, 36, 36, "NULL ROTATION", "Back", "Front");
         layout.textView.setText(message);
@@ -103,23 +113,34 @@ public final class BulletinFactory {
     }
 
     @CheckResult
-    public Bulletin createCopyLinkBulletin() {
-        final Bulletin.LottieLayout layout = new Bulletin.LottieLayout(getContext());
-        layout.setAnimation(R.raw.voip_invite, 36, 36, "Wibe", "Circle");
-        layout.textView.setText("Link Copied");
-        return create(layout, Bulletin.DURATION_SHORT);
+    public Bulletin createCopyLinkBulletin(boolean isPrivate) {
+        if (!AndroidUtilities.shouldShowClipboardToast()) {
+            return new Bulletin.EmptyBulletin();
+        }
+        if (isPrivate) {
+            final Bulletin.TwoLineLottieLayout layout = new Bulletin.TwoLineLottieLayout(getContext());
+            layout.setAnimation(R.raw.voip_invite, 36, 36, "Wibe", "Circle");
+            layout.titleTextView.setText("LinkCopied");
+            layout.subtitleTextView.setText("LinkCopiedPrivateInfo");
+            return create(layout, Bulletin.DURATION_LONG);
+        } else {
+            final Bulletin.LottieLayout layout = new Bulletin.LottieLayout(getContext());
+            layout.setAnimation(R.raw.voip_invite, 36, 36, "Wibe", "Circle");
+            layout.textView.setText("LinkCopied");
+            return create(layout, Bulletin.DURATION_SHORT);
+        }
     }
 
-    //region Static Factory
-
-
-    /*@CheckResult
-    public static Bulletin createDeleteMessagesBulletin(BaseFragment fragment, int count) {
-        final Bulletin.LottieLayout layout = new Bulletin.LottieLayout(fragment.getParentActivity());
-        layout.setAnimation(R.raw.ic_delete, "Envelope", "Cover", "Bucket");
-        layout.textView.setText(LocaleController.formatPluralString("MessagesDeletedHint", count));
-        return Bulletin.make(fragment, layout, Bulletin.DURATION_SHORT);
-    }*/
+    @CheckResult
+    public Bulletin createCopyLinkBulletin(String text) {
+        if (!AndroidUtilities.shouldShowClipboardToast()) {
+            return new Bulletin.EmptyBulletin();
+        }
+        final Bulletin.LottieLayout layout = new Bulletin.LottieLayout(getContext());
+        layout.setAnimation(R.raw.voip_invite, 36, 36, "Wibe", "Circle");
+        layout.textView.setText(text);
+        return create(layout, Bulletin.DURATION_SHORT);
+    }
 
     private Bulletin create(Bulletin.Layout layout, int duration) {
         if (fragment != null) {
@@ -133,50 +154,16 @@ public final class BulletinFactory {
         return fragment != null ? fragment.getParentActivity() : containerLayout.getContext();
     }
 
-    public enum FileType {
+//region Static Factory
 
-        UNKNOWN("FileSavedHint", R.string.FileSavedHint, Icon.SAVED_TO_DOWNLOADS),
-        UNKNOWNS("FilesSavedHint", Icon.SAVED_TO_DOWNLOADS);
-
-        private final String localeKey;
-        private final int localeRes;
-        private final boolean plural;
-        private final Icon icon;
-
-        FileType(String localeKey, int localeRes, Icon icon) {
-            this.localeKey = localeKey;
-            this.localeRes = localeRes;
-            this.icon = icon;
-            this.plural = false;
-        }
-
-        FileType(String localeKey, Icon icon) {
-            this.localeKey = localeKey;
-            this.icon = icon;
-            this.localeRes = 0;
-            this.plural = true;
-        }
-
-        private String getText() {
-            return LocaleController.getString(localeKey, localeRes);
-        }
-
-        private enum Icon {
-
-            SAVED_TO_DOWNLOADS(R.raw.ic_download, 2, "Box", "Arrow"),
-            SAVED_TO_GALLERY(R.raw.ic_save_to_gallery, 0, "Box", "Arrow", "Mask", "Arrow 2", "Splash"),
-            SAVED_TO_MUSIC(R.raw.ic_save_to_music, 2, "Box", "Arrow");
-
-            private final int resId;
-            private final String[] layers;
-            private final int paddingBottom;
-
-            Icon(int resId, int paddingBottom, String... layers) {
-                this.resId = resId;
-                this.paddingBottom = paddingBottom;
-                this.layers = layers;
-            }
-        }
+    @CheckResult
+    public static Bulletin createCopyLinkBulletin(BaseFragment fragment) {
+        return of(fragment).createCopyLinkBulletin();
     }
-    //endregion
+
+    @CheckResult
+    public static Bulletin createCopyLinkBulletin(FrameLayout containerView) {
+        return of(containerView).createCopyLinkBulletin();
+    }
+//endregion
 }
