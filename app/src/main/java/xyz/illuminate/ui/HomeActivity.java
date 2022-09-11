@@ -11,8 +11,10 @@ import android.widget.FrameLayout;
 
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+
 import java.util.ArrayList;
-import java.util.HashMap;
 
 import xyz.illuminate.app.AndroidUtilities;
 import xyz.illuminate.app.NotificationCenter;
