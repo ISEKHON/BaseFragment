@@ -8,6 +8,7 @@ import android.graphics.PorterDuffColorFilter;
 import android.graphics.Typeface;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -26,7 +27,7 @@ import xyz.illuminate.ui.Models.ItemModal;
 
 public class UserCell extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
 
-    private ImageView avatarImageView;
+    private View avatarImageView;
     private SimpleTextView nameTextView;
     private SimpleTextView statusTextView;
     private ImageView imageView;
@@ -44,7 +45,7 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
     private int statusColor;
     private int statusOnlineColor;
 
-    private boolean needDivider;
+    private boolean needDivider=true;
 
     public UserCell(Context context, int padding, int checkbox, boolean admin) {
         this(context, padding, checkbox, admin, false);
@@ -54,26 +55,26 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
         super(context);
 
         int additionalPadding;
-        if (needAddButton) {
+      //  if (needAddButton) {
             addButton = new TextView(context);
             addButton.setGravity(Gravity.CENTER);
             addButton.setTextColor(Color.WHITE);
             addButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
             addButton.setTypeface(AndroidUtilities.getTypeface("fonts/rmedium.ttf"));
             addButton.setBackgroundDrawable(Theme.AdaptiveRipple.filledRect(Color.parseColor("#4da0eb"), 4));
-            addButton.setText(LocaleController.getString("Add", R.string.Add));
+            addButton.setText("Preview");
             addButton.setPadding(AndroidUtilities.dp(17), 0, AndroidUtilities.dp(17), 0);
             addView(addButton, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 28, Gravity.TOP | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT), LocaleController.isRTL ? 14 : 0, 15, LocaleController.isRTL ? 0 : 14, 0));
             additionalPadding = (int) Math.ceil((addButton.getPaint().measureText(addButton.getText().toString()) + AndroidUtilities.dp(34 + 14)) / AndroidUtilities.density);
-        } else {
-            additionalPadding = 0;
-        }
+      //  } else {
+       //     additionalPadding = 0;
+     //   }
 
-        statusColor = Color.parseColor("#8c8e91");
+        statusColor = Color.parseColor("#838C96");
         statusOnlineColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlueText);
 
-        avatarImageView = new ImageView(context);
-        //avatarImageView.setRoundRadius(AndroidUtilities.dp(24));
+        avatarImageView = new View(context);
+        avatarImageView.setBackgroundDrawable(Theme.createRoundRectDrawable(AndroidUtilities.dp(50),Color.parseColor("#118df5")));
         addView(avatarImageView, LayoutHelper.createFrame(46, 46, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 7 + padding, 6, LocaleController.isRTL ? 7 + padding : 0, 0));
 
         nameTextView = new SimpleTextView(context);
@@ -85,6 +86,7 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
 
         statusTextView = new SimpleTextView(context);
         statusTextView.setTextSize(15);
+		statusTextView.setTextColor(statusColor);
         statusTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
         addView(statusTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 20, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 28 + additionalPadding : (64 + padding), 32, LocaleController.isRTL ? (64 + padding) : 28 + additionalPadding, 0));
 
@@ -107,11 +109,12 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
         if (admin) {
             adminTextView = new TextView(context);
             adminTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-            adminTextView.setTextColor(Color.parseColor("#118df5"));
+            adminTextView.setTextColor(Color.parseColor("#118df5"));			
             addView(adminTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.TOP, LocaleController.isRTL ? 23 : 0, 10, LocaleController.isRTL ? 0 : 23, 0));
         }
 
         setFocusable(true);
+		setWillNotDraw(!needDivider);
     }
 
     public void setAvatarPadding(int padding) {
@@ -161,10 +164,10 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
         return nameTextView.getText();
     }
 
-    public void setData(ItemModal itemModal) {
-        nameTextView.setText(itemModal.getName());
-        statusTextView.setText(itemModal.getLastEdited());
-        setRole(itemModal.getType());
+    public void setData(String name,String last, String type) {
+        nameTextView.setText(name);
+        statusTextView.setText(last);
+        setRole(type.equals("d")?"Dialog":"Toast");
     }
 
 
