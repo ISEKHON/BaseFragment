@@ -611,10 +611,10 @@ themesDict.put(theme.uuid, theme);*/
                 }
             }
             if (!exists) {
-                applyTheme(themes.get(1));
+                applyTheme(themes.get(0));
             }
         } else {
-            applyTheme(themes.get(1));
+            applyTheme(themes.get(0));
         }
     }
 
