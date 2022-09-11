@@ -17,7 +17,7 @@ public class SharedConfig {
     private static final Object localIdSync = new Object();
     public static boolean animationsEnabled = true;
     public static boolean debugLinesEnabled = false;
-    public static boolean noStatusBar = false;
+    public static boolean noStatusBar = true;
     public static boolean disableDrawerAnimation = false;
     public static boolean smoothKeyboard = true;
     public static boolean isGameVersionSelected;
