@@ -6,6 +6,7 @@ import android.text.Spanned;
 import android.text.SpannedString;
 import android.text.TextUtils;
 import android.text.style.CharacterStyle;
+import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -13,6 +14,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.function.Function;
 
 import xyz.illuminate.server.TLRPC;
 import xyz.illuminate.ui.Components.TextStyleSpan;
@@ -21,10 +23,14 @@ import xyz.illuminate.ui.Components.URLSpanUserMention;
 
 @SuppressWarnings("unchecked")
 public class MediaDataController extends BaseController {
-    private static final Pattern BOLD_PATTERN = Pattern.compile("\\*\\*(.+?)\\*\\*");
-    private static final Pattern ITALIC_PATTERN = Pattern.compile("__(.+?)__");
-    private static final Pattern SPOILER_PATTERN = Pattern.compile("\\|\\|(.+?)\\|\\|");
-    private static final Pattern STRIKE_PATTERN = Pattern.compile("~~(.+?)~~");
+    private static final String TAG = "MediaDataController";
+    private static final Pattern BOLD_PATTERN = Pattern.compile("\\*\\*([^*_]+?)\\*\\*");
+    private static final Pattern ITALIC_PATTERN = Pattern.compile("__([^_*]+?)__");
+    private static final Pattern SPOILER_PATTERN = Pattern.compile("\\|\\|([^|]+?)\\|\\|");
+    private static final Pattern STRIKE_PATTERN = Pattern.compile("~~([^~]+?)~~");
+    private static final Pattern MONOSPACE_PATTERN = Pattern.compile("`([^`]+?)`");
+    private static final Pattern CODE_BLOCK_PATTERN = Pattern.compile("```([\\s\\S]+?)```");
+    private static final Pattern BOLD_ITALIC_PATTERN = Pattern.compile("\\*\\*__([^*_]+?)__\\*\\*");
 
     private static volatile MediaDataController Instance = new MediaDataController();
     private static final Comparator<TLRPC.MessageEntity> entityComparator = (entity1, entity2) -> {
@@ -166,7 +172,7 @@ public class MediaDataController extends BaseController {
                 editable.setSpan(span, start, Math.min(editable.length(), end), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
         } catch (Exception e) {
-            FileLog.e(e);
+            Log.e(TAG, "Error in addStyleToText", e);
         }
     }
 
@@ -334,155 +340,139 @@ public class MediaDataController extends BaseController {
         if (message == null || message[0] == null) {
             return null;
         }
-        ArrayList<TLRPC.MessageEntity> entities = null;
-        int index;
-        int start = -1;
-        int lastIndex = 0;
-        boolean isPre = false;
-        final String mono = "`";
-        final String pre = "```";
-        while ((index = TextUtils.indexOf(message[0], !isPre ? mono : pre, lastIndex)) != -1) {
-            if (start == -1) {
-                isPre = message[0].length() - index > 2 && message[0].charAt(index + 1) == '`' && message[0].charAt(index + 2) == '`';
-                start = index;
-                lastIndex = index + (isPre ? 3 : 1);
-            } else {
-                if (entities == null) {
-                    entities = new ArrayList<>();
-                }
-                for (int a = index + (isPre ? 3 : 1); a < message[0].length(); a++) {
-                    if (message[0].charAt(a) == '`') {
-                        index++;
-                    } else {
-                        break;
-                    }
-                }
-                lastIndex = index + (isPre ? 3 : 1);
-                if (isPre) {
-                    int firstChar = start > 0 ? message[0].charAt(start - 1) : 0;
-                    boolean replacedFirst = firstChar == ' ' || firstChar == '\n';
-                    CharSequence startMessage = substring(message[0], 0, start - (replacedFirst ? 1 : 0));
-                    CharSequence content = substring(message[0], start + 3, index);
-                    firstChar = index + 3 < message[0].length() ? message[0].charAt(index + 3) : 0;
-                    CharSequence endMessage = substring(message[0], index + 3 + (firstChar == ' ' || firstChar == '\n' ? 1 : 0), message[0].length());
-                    if (startMessage.length() != 0) {
-                        startMessage = AndroidUtilities.concat(startMessage, "\n");
-                    } else {
-                        replacedFirst = true;
-                    }
-                    if (endMessage.length() != 0) {
-                        endMessage = AndroidUtilities.concat("\n", endMessage);
-                    }
-                    if (!TextUtils.isEmpty(content)) {
-                        message[0] = AndroidUtilities.concat(startMessage, content, endMessage);
-                        TLRPC.TL_messageEntityPre entity = new TLRPC.TL_messageEntityPre();
-                        entity.offset = start + (replacedFirst ? 0 : 1);
-                        entity.length = index - start - 3 + (replacedFirst ? 0 : 1);
-                        entity.language = "";
-                        entities.add(entity);
-                        lastIndex -= 6;
-                    }
-                } else {
-                    if (start + 1 != index) {
-                        message[0] = AndroidUtilities.concat(substring(message[0], 0, start), substring(message[0], start + 1, index), substring(message[0], index + 1, message[0].length()));
-                        TLRPC.TL_messageEntityCode entity = new TLRPC.TL_messageEntityCode();
-                        entity.offset = start;
-                        entity.length = index - start - 1;
-                        entities.add(entity);
-                        lastIndex -= 2;
-                    }
-                }
-                start = -1;
-                isPre = false;
-            }
-        }
-        if (start != -1 && isPre) {
-            message[0] = AndroidUtilities.concat(substring(message[0], 0, start), substring(message[0], start + 2, message[0].length()));
-            if (entities == null) {
-                entities = new ArrayList<>();
-            }
-            TLRPC.TL_messageEntityCode entity = new TLRPC.TL_messageEntityCode();
-            entity.offset = start;
-            entity.length = 1;
-            entities.add(entity);
-        }
-
-        if (message[0] instanceof Spanned) {
-            Spanned spannable = (Spanned) message[0];
-            TextStyleSpan[] spans = spannable.getSpans(0, message[0].length(), TextStyleSpan.class);
-            if (spans != null && spans.length > 0) {
-                for (int a = 0; a < spans.length; a++) {
-                    TextStyleSpan span = spans[a];
-                    int spanStart = spannable.getSpanStart(span);
-                    int spanEnd = spannable.getSpanEnd(span);
-                    if (checkInclusion(spanStart, entities, false) || checkInclusion(spanEnd, entities, true) || checkIntersection(spanStart, spanEnd, entities)) {
-                        continue;
-                    }
-                    if (entities == null) {
-                        entities = new ArrayList<>();
-                    }
-                    addStyle(span.getStyleFlags(), spanStart, spanEnd, entities);
-                }
-            }
-
-            URLSpanUserMention[] spansMentions = spannable.getSpans(0, message[0].length(), URLSpanUserMention.class);
-            if (spansMentions != null && spansMentions.length > 0) {
-                if (entities == null) {
-                    entities = new ArrayList<>();
-                }
-            }
-
-            URLSpanReplacement[] spansUrlReplacement = spannable.getSpans(0, message[0].length(), URLSpanReplacement.class);
-            if (spansUrlReplacement != null && spansUrlReplacement.length > 0) {
-                if (entities == null) {
-                    entities = new ArrayList<>();
-                }
-                for (int b = 0; b < spansUrlReplacement.length; b++) {
-                    TLRPC.TL_messageEntityTextUrl entity = new TLRPC.TL_messageEntityTextUrl();
-                    entity.offset = spannable.getSpanStart(spansUrlReplacement[b]);
-                    entity.length = Math.min(spannable.getSpanEnd(spansUrlReplacement[b]), message[0].length()) - entity.offset;
-                    entity.url = spansUrlReplacement[b].getURL();
-                    entities.add(entity);
-                    TextStyleSpan.TextStyleRun style = spansUrlReplacement[b].getTextStyleRun();
-                    if (style != null) {
-                        addStyle(style.flags, entity.offset, entity.offset + entity.length, entities);
-                    }
-                }
-            }
-        }
-
+        ArrayList<TLRPC.MessageEntity> entities = new ArrayList<>();
         CharSequence cs = message[0];
-        if (entities == null) entities = new ArrayList<>();
+
+        // Handle code blocks first (since they can contain other markdown)
+        Matcher m = CODE_BLOCK_PATTERN.matcher(cs);
+        StringBuilder result = new StringBuilder(cs);
+        int offset = 0;
+        
+        while (m.find()) {
+            try {
+                int start = m.start() - offset;
+                String content = m.group(1);
+                if (content == null) {
+                    continue;
+                }
+
+                // Create code block entity
+                TLRPC.TL_messageEntityPre entity = new TLRPC.TL_messageEntityPre();
+                entity.offset = start;
+                entity.length = content.length();
+                entity.language = ""; // Can be used to specify programming language
+                entities.add(entity);
+
+                // Remove the markdown symbols
+                result.replace(m.start() - offset, m.end() - offset, content);
+                offset += m.end() - m.start() - content.length();
+
+                android.util.Log.d(TAG, "Found code block at offset " + start + 
+                    " with length " + content.length() + " content: '" + content + "'");
+            } catch (Exception e) {
+                android.util.Log.e(TAG, "Error processing code block", e);
+            }
+        }
+        cs = result;
+
+        // Handle bold-italic next
+        m = BOLD_ITALIC_PATTERN.matcher(cs);
+        result = new StringBuilder(cs);
+        offset = 0;
+        
+        while (m.find()) {
+            try {
+                int start = m.start() - offset;
+                String content = m.group(1);
+                if (content == null) {
+                    continue;
+                }
+
+                // Create both bold and italic entities for the same range
+                TLRPC.TL_messageEntityBold boldEntity = new TLRPC.TL_messageEntityBold();
+                boldEntity.offset = start;
+                boldEntity.length = content.length();
+                entities.add(boldEntity);
+
+                TLRPC.TL_messageEntityItalic italicEntity = new TLRPC.TL_messageEntityItalic();
+                italicEntity.offset = start;
+                italicEntity.length = content.length();
+                entities.add(italicEntity);
+
+                // Remove the markdown symbols
+                result.replace(m.start() - offset, m.end() - offset, content);
+                offset += m.end() - m.start() - content.length();
+
+                android.util.Log.d(TAG, "Found bold-italic pattern at offset " + start + 
+                    " with length " + content.length() + " content: '" + content + "'");
+            } catch (Exception e) {
+                android.util.Log.e(TAG, "Error processing bold-italic pattern", e);
+            }
+        }
+        cs = result;
+
+        // Then handle other patterns
         cs = parsePattern(cs, BOLD_PATTERN, entities, obj -> new TLRPC.TL_messageEntityBold());
         cs = parsePattern(cs, ITALIC_PATTERN, entities, obj -> new TLRPC.TL_messageEntityItalic());
         cs = parsePattern(cs, SPOILER_PATTERN, entities, obj -> new TLRPC.TL_messageEntitySpoiler());
         if (allowStrike) {
             cs = parsePattern(cs, STRIKE_PATTERN, entities, obj -> new TLRPC.TL_messageEntityStrike());
         }
-        message[0] = cs;
+        cs = parsePattern(cs, MONOSPACE_PATTERN, entities, obj -> new TLRPC.TL_messageEntityCode());
 
+        message[0] = cs;
         return entities;
     }
 
-    private CharSequence parsePattern(CharSequence cs, Pattern pattern, List<TLRPC.MessageEntity> entities, GenericProvider<Void, TLRPC.MessageEntity> entityProvider) {
-        Matcher m = pattern.matcher(cs);
-        int offset = 0;
-        while (m.find()) {
-            if (checkInclusion(m.start(), entities, false) || checkIntersection(m.start(), m.end(), entities)) {
-
-            }
-
-            String gr = m.group(1);
-            cs = cs.subSequence(0, m.start() - offset) + gr + cs.subSequence(m.end() - offset, cs.length());
-
-            TLRPC.MessageEntity entity = entityProvider.provide(null);
-            entity.offset = m.start() + offset;
-            entity.length = gr.length();
-            entities.add(entity);
-
-            offset += m.end() - m.start() - gr.length();
+    private CharSequence parsePattern(CharSequence text, Pattern pattern, ArrayList<TLRPC.MessageEntity> entities, Function<Void, TLRPC.MessageEntity> entityCreator) {
+        if (text == null) {
+            return null;
         }
-        return cs;
+
+        Matcher m = pattern.matcher(text);
+        StringBuilder result = new StringBuilder(text);
+        int offset = 0;
+
+        while (m.find()) {
+            try {
+                int start = m.start() - offset;
+                String content = m.group(1);
+                if (content == null) {
+                    continue;
+                }
+
+                // Skip if this region intersects with existing entities
+                boolean skip = false;
+                for (TLRPC.MessageEntity entity : entities) {
+                    if ((start >= entity.offset && start < entity.offset + entity.length) ||
+                        (start + content.length() > entity.offset && start + content.length() <= entity.offset + entity.length)) {
+                        skip = true;
+                        break;
+                    }
+                }
+                if (skip) {
+                    continue;
+                }
+
+                // Create and add the entity
+                TLRPC.MessageEntity entity = entityCreator.apply(null);
+                entity.offset = start;
+                entity.length = content.length();
+                entities.add(entity);
+
+                // Remove the markdown symbols
+                result.replace(m.start() - offset, m.end() - offset, content);
+                offset += m.end() - m.start() - content.length();
+
+                android.util.Log.d("MediaDataController", "Found pattern match: " + pattern.pattern() + 
+                    " at offset " + start + " with length " + content.length() + 
+                    " content: '" + content + "'");
+
+            } catch (Exception e) {
+                android.util.Log.e("MediaDataController", "Error processing pattern: " + pattern.pattern(), e);
+            }
+        }
+        return result;
     }
 
 

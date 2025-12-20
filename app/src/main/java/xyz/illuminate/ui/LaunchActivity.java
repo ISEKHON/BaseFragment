@@ -221,7 +221,7 @@ public class LaunchActivity extends AppCompatActivity implements ActionBarLayout
                 int id = drawerLayoutAdapter.getId(position);
                 if (id == 2) {
                     Bundle args = new Bundle();
-                    //actionBarLayout.presentFragment(new DeveloperTools());
+                    actionBarLayout.presentFragment(new DeveloperTools());
                     AndroidUtilities.showToast("ok");
                     drawerLayoutContainer.closeDrawer(false);
                 } else if (id == 3) {
@@ -330,7 +330,7 @@ public class LaunchActivity extends AppCompatActivity implements ActionBarLayout
             int id = drawerLayoutAdapter.getId(position);
             if (id == 2) {
                 Bundle args = new Bundle();
-             //   actionBarLayout.presentFragment(new DeveloperTools());
+                actionBarLayout.presentFragment(new DeveloperTools());
                 AndroidUtilities.showToast("");
                 drawerLayoutContainer.closeDrawer(false);
             } else if (id == 3) {
@@ -350,7 +350,7 @@ public class LaunchActivity extends AppCompatActivity implements ActionBarLayout
                 homeActivity = new HomeActivity();
             }
 
-            actionBarLayout.addFragmentToStack(new HomeActivity());
+            actionBarLayout.addFragmentToStack(new LoginActivity());
             drawerLayoutContainer.setAllowOpenDrawer(true, true);
 
             if (!AndroidUtilities.isTablet()) {
@@ -507,7 +507,7 @@ public class LaunchActivity extends AppCompatActivity implements ActionBarLayout
                     actionBarLayout.setVisibility(View.VISIBLE);
                     drawerLayoutContainer.setAllowOpenDrawer(false, false);
                 }
-                if (fragment instanceof HomeActivity) {
+                if (fragment instanceof LoginActivity) {
                     backgroundTablet.setVisibility(View.VISIBLE);
                     shadowTabletSide.setVisibility(View.GONE);
                     shadowTablet.setBackgroundColor(0);
@@ -531,18 +531,18 @@ public class LaunchActivity extends AppCompatActivity implements ActionBarLayout
                 return false;
             }
         } else {
-            boolean allow = false;
-            if (fragment instanceof HomeActivity) {
+            boolean allow = true;
+            if (fragment instanceof LoginActivity) {
                 if (mainFragmentsStack.size() == 0) {
                     allow = false;
                 }
-            } else if (fragment instanceof LoginActivity) {
+            } else if (fragment instanceof HomeActivity) {
                 if (mainFragmentsStack.size() == 1) {
-                    allow = false;
+                    allow = true;
                 }
-            } else if (fragment instanceof LoginActivity) {
+            } else if (fragment instanceof ChatActivity) {
                 if (mainFragmentsStack.size() == 2) {
-                    allow = false;
+                    allow = true;
                 }
             }
             drawerLayoutContainer.setAllowOpenDrawer(allow, false);
@@ -560,7 +560,7 @@ public class LaunchActivity extends AppCompatActivity implements ActionBarLayout
                     actionBarLayout.setVisibility(View.VISIBLE);
                     drawerLayoutContainer.setAllowOpenDrawer(false, false);
                 }
-                if (fragment instanceof HomeActivity) {
+                if (fragment instanceof LoginActivity) {
                     backgroundTablet.setVisibility(View.VISIBLE);
                     shadowTabletSide.setVisibility(View.GONE);
                     shadowTablet.setBackgroundColor(0);
@@ -598,18 +598,18 @@ public class LaunchActivity extends AppCompatActivity implements ActionBarLayout
                 return false;
             }
         } else {
-            boolean allow = false;
-            if (fragment instanceof HomeActivity) {
+            boolean allow = true;
+            if (fragment instanceof LoginActivity) {
                 if (mainFragmentsStack.size() == 0) {
                     allow = false;
                 }
-            } else if (fragment instanceof LoginActivity) {
+            } else if (fragment instanceof HomeActivity) {
                 if (mainFragmentsStack.size() == 1) {
                     allow = false;
                 }
-            } else if (fragment instanceof LoginActivity) {
+            } else if (fragment instanceof ChatActivity) {
                 if (mainFragmentsStack.size() == 2) {
-                    allow = false;
+                    allow = true;
                 }
             }
             drawerLayoutContainer.setAllowOpenDrawer(allow, false);
@@ -836,7 +836,7 @@ public class LaunchActivity extends AppCompatActivity implements ActionBarLayout
     }
 
     public void _refresh() {
-        HomeActivity HomeActivity = new HomeActivity();
+        DeveloperTools HomeActivity = new DeveloperTools();
         actionBarLayout.removeFragmentFromStack(0);
         actionBarLayout.presentFragment(HomeActivity);
         drawerLayoutContainer.setAllowOpenDrawer(false, false);

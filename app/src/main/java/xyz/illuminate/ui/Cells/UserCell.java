@@ -23,13 +23,14 @@ import xyz.illuminate.ui.ActionBar.Theme;
 import xyz.illuminate.ui.Components.CheckBox;
 import xyz.illuminate.ui.Components.CheckBoxSquare;
 import xyz.illuminate.ui.Components.LayoutHelper;
+import xyz.illuminate.ui.Components.SpanTextView;
 import xyz.illuminate.ui.Models.ItemModal;
 
 public class UserCell extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
 
     private View avatarImageView;
     private SimpleTextView nameTextView;
-    private SimpleTextView statusTextView;
+    private SpanTextView statusTextView;
     private ImageView imageView;
     private CheckBox checkBox;
     private CheckBoxSquare checkBoxBig;
@@ -84,7 +85,7 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
         nameTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
         addView(nameTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 20, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 28 + (checkbox == 2 ? 18 : 0) + additionalPadding : (64 + padding), 10, LocaleController.isRTL ? (64 + padding) : 28 + (checkbox == 2 ? 18 : 0) + additionalPadding, 0));
 
-        statusTextView = new SimpleTextView(context);
+        statusTextView = new SpanTextView(context);
         statusTextView.setTextSize(15);
 		statusTextView.setTextColor(statusColor);
         statusTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
@@ -166,7 +167,7 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
 
     public void setData(String name,String last, String type) {
         nameTextView.setText(name);
-        statusTextView.setText(last);
+        statusTextView.setSpanText(last);
         setRole(type.equals("d")?"Dialog":"Toast");
     }
 

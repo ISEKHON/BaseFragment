@@ -33,6 +33,8 @@ import android.util.StateSet;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.graphics.ColorUtils;
+import androidx.core.math.MathUtils;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -225,6 +227,11 @@ public class Theme {
     public static final String key_windowBackgroundBlueGrayText = "windowBackgroundBlueGrayText";
     public static final String key_surfaceBackground = "surfaceBackground";
     public static final String key_imageColorPrimary = "imageColorPrimary";
+    public static Paint DEBUG_GREEN_STROKE = new Paint(); static {
+        DEBUG_GREEN_STROKE.setColor(0xff00ff00);
+        DEBUG_GREEN_STROKE.setStrokeWidth(2);
+        DEBUG_GREEN_STROKE.setStyle(Paint.Style.STROKE);
+    }
     private static final Paint maskPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final HashMap<String, Integer> currentColors = new HashMap<>();
     private static final HashMap<String, Integer> defaultColors = new HashMap<>();
@@ -1415,6 +1422,12 @@ themesDict.put(theme.uuid, theme);*/
 
     public static boolean canStartHolidayAnimation() {
         return false;
+    }
+
+    public static int multAlpha(int color, float multiply) {
+        if (multiply == 1f)
+            return color;
+        return ColorUtils.setAlphaComponent(color, MathUtils.clamp((int) (Color.alpha(color) * multiply), 0, 0xFF));
     }
 
     public static class ThemeInfo {

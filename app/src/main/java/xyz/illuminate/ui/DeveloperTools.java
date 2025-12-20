@@ -103,7 +103,7 @@ public class DeveloperTools extends BaseFragment implements NotificationCenter.N
                 return;
             }
             if (position == homeRow) {
-                presentFragment(new HomeActivity());
+                presentFragment(new CommentsActivity());
             } else if (position == themeEditorRow) {
                 new ThemeEditorView().show(getParentActivity(), Theme.currentTheme);
                 BulletinFactory.createCopyLinkBulletin(DeveloperTools.this);
@@ -341,7 +341,7 @@ public class DeveloperTools extends BaseFragment implements NotificationCenter.N
                 case 0:
                     TextSettingsCell detailSettingsCell = (TextSettingsCell) holder.itemView;
                     if (position == homeRow) {
-                        detailSettingsCell.setText("Open HomeActivity", true);
+                        detailSettingsCell.setText("Open Comments", true);
                     } else if (position == themeEditorRow) {
                         detailSettingsCell.setText("Open Theme Editor", true);
                     }

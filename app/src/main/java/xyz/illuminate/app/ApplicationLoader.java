@@ -139,8 +139,6 @@ public class ApplicationLoader extends Application {
 
     @Override
     public void onCreate() {
-        new CrashHandler().init(this);
-        Logger.initialize(this);
         NativeLoader.initNativeLibs(this);
         try {
             applicationContext = getApplicationContext();

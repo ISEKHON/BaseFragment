@@ -4,6 +4,8 @@ plugins {
 
 android {
     compileSdk 33
+    namespace 'xyz.illuminate.app'
+    ndkVersion "21.4.7075529"
 
     defaultConfig {
         applicationId "xyz.illuminate.app"
@@ -58,12 +60,14 @@ android {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
     }
+
     externalNativeBuild {
         cmake {
             path file('src/main/cpp/CMakeLists.txt')
-            version '3.18.1'
+            version '3.10.2'
         }
     }
+
 }
 
 configurations {
@@ -85,10 +89,15 @@ dependencies {
     implementation 'androidx.multidex:multidex:2.0.1'
     implementation 'androidx.cardview:cardview:1.0.0'
     implementation 'androidx.core:core:1.9.0'
-
+    implementation 'de.hdodenhof:circleimageview:3.1.0'
     //google libs
     implementation 'com.google.android.material:material:1.6.1'
     implementation 'com.google.code.gson:gson:2.9.1'
+
+    
+    //implementation 'com.github.stfalcon-studio:StfalconImageViewer:v1.0.1'
+    implementation 'com.github.bumptech.glide:glide:4.12.0'
+
 
     //networking libs
     implementation 'com.android.volley:volley:1.2.1'

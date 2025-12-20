@@ -4,12 +4,14 @@ import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.text.TextPaint;
 import android.text.style.MetricAffectingSpan;
+import android.util.Log;
 
 import xyz.illuminate.app.AndroidUtilities;
 import xyz.illuminate.server.TLRPC;
 import xyz.illuminate.ui.ActionBar.Theme;
 
 public class TextStyleSpan extends MetricAffectingSpan {
+    private static final String TAG = "TextStyleSpan";
 
     public final static int FLAG_STYLE_BOLD = 1;
     public final static int FLAG_STYLE_ITALIC = 2;
@@ -21,6 +23,7 @@ public class TextStyleSpan extends MetricAffectingSpan {
     public final static int FLAG_STYLE_URL = 128;
     public final static int FLAG_STYLE_SPOILER = 256;
     public final static int FLAG_STYLE_SPOILER_REVEALED = 512;
+    public final static int FLAG_STYLE_BOLD_ITALIC = 1024;
     private int textSize;
     private int color;
     private final TextStyleRun style;
@@ -111,7 +114,7 @@ public class TextStyleSpan extends MetricAffectingSpan {
         public TLRPC.MessageEntity urlEntity;
 
         public TextStyleRun() {
-
+            flags = 0;
         }
 
         public TextStyleRun(TextStyleRun run) {
@@ -123,49 +126,89 @@ public class TextStyleSpan extends MetricAffectingSpan {
 
         public void merge(TextStyleRun run) {
             flags |= run.flags;
-            if (urlEntity == null && run.urlEntity != null) {
-                urlEntity = run.urlEntity;
-            }
         }
 
         public void replace(TextStyleRun run) {
             flags = run.flags;
-            urlEntity = run.urlEntity;
         }
 
         public void applyStyle(TextPaint p) {
-            Typeface typeface = getTypeface();
-            if (typeface != null) {
-                p.setTypeface(typeface);
-            }
-            if ((flags & FLAG_STYLE_UNDERLINE) != 0) {
-                p.setFlags(p.getFlags() | Paint.UNDERLINE_TEXT_FLAG);
-            } else {
-                p.setFlags(p.getFlags() & ~Paint.UNDERLINE_TEXT_FLAG);
-            }
-            if ((flags & FLAG_STYLE_STRIKE) != 0) {
-                p.setFlags(p.getFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
-            } else {
-                p.setFlags(p.getFlags() & ~Paint.STRIKE_THRU_TEXT_FLAG);
-            }
+            try {
+                if ((flags & FLAG_STYLE_BOLD) != 0) {
+                    Typeface typeface = AndroidUtilities.getTypeface("fonts/opensans_bold.ttf");
+                    if (typeface != null) {
+                        p.setTypeface(typeface);
+                    } else {
+                        android.util.Log.e("TextStyleSpan", "Bold font not found, using default bold");
+                        p.setTypeface(Typeface.DEFAULT_BOLD);
+                    }
+                } else if ((flags & FLAG_STYLE_ITALIC) != 0) {
+                    Typeface typeface = AndroidUtilities.getTypeface("fonts/ritalic.ttf");
+                    if (typeface != null) {
+                        p.setTypeface(typeface);
+                    } else {
+                        android.util.Log.e("TextStyleSpan", "Italic font not found, using default italic");
+                        p.setTypeface(Typeface.defaultFromStyle(Typeface.ITALIC));
+                    }
+                } else if ((flags & FLAG_STYLE_BOLD_ITALIC) != 0) {
+                    Typeface typeface = AndroidUtilities.getTypeface("fonts/rmediumitalic.ttf");
+                    if (typeface != null) {
+                        p.setTypeface(typeface);
+                    } else {
+                        android.util.Log.e("TextStyleSpan", "Bold-italic font not found, using default bold-italic");
+                        p.setTypeface(Typeface.defaultFromStyle(Typeface.BOLD_ITALIC));
+                    }
+                } else if ((flags & FLAG_STYLE_MONO) != 0) {
+                    p.setTypeface(Typeface.MONOSPACE);
+                }
 
-            if ((flags & FLAG_STYLE_SPOILER_REVEALED) != 0) {
-                p.bgColor = Theme.getColor(Theme.key_buttonBackgroundBlue);
+                if ((flags & FLAG_STYLE_STRIKE) != 0) {
+                    p.setStrikeThruText(true);
+                }
+
+                if ((flags & FLAG_STYLE_UNDERLINE) != 0) {
+                    p.setUnderlineText(true);
+                }
+
+                if ((flags & FLAG_STYLE_SPOILER) != 0) {
+                    // Apply spoiler effect (gray background and text color)
+                    p.setColor(0xFF808080); // Gray color
+                    p.bgColor = 0xFFE0E0E0; // Light gray background
+                }
+            } catch (Exception e) {
+                android.util.Log.e("TextStyleSpan", "Error applying text style", e);
             }
         }
 
         public Typeface getTypeface() {
-            if ((flags & FLAG_STYLE_MONO) != 0 || (flags & FLAG_STYLE_QUOTE) != 0) {
+            if ((flags & FLAG_STYLE_BOLD) > 0) {
+                Typeface typeface = AndroidUtilities.getTypeface("fonts/opensans_bold.ttf");
+                if (typeface != null) {
+                    return typeface;
+                } else {
+                    Log.e(TAG, "Font file not found: fonts/opensans_bold.ttf");
+                    return Typeface.DEFAULT_BOLD;
+                }
+            } else if ((flags & FLAG_STYLE_ITALIC) > 0) {
+                Typeface typeface = AndroidUtilities.getTypeface("fonts/ritalic.ttf");
+                if (typeface != null) {
+                    return typeface;
+                } else {
+                    Log.e(TAG, "Font file not found: fonts/ritalic.ttf");
+                    return Typeface.defaultFromStyle(Typeface.ITALIC);
+                }
+            } else if ((flags & FLAG_STYLE_MONO) > 0) {
                 return Typeface.MONOSPACE;
-            } else if ((flags & FLAG_STYLE_BOLD) != 0 && (flags & FLAG_STYLE_ITALIC) != 0) {
-                return AndroidUtilities.getTypeface("fonts/rmediumitalic.ttf");
-            } else if ((flags & FLAG_STYLE_BOLD) != 0) {
-                return AndroidUtilities.getTypeface("fonts/rmedium.ttf");
-            } else if ((flags & FLAG_STYLE_ITALIC) != 0) {
-                return AndroidUtilities.getTypeface("fonts/ritalic.ttf");
-            } else {
-                return null;
+            } else if ((flags & FLAG_STYLE_BOLD_ITALIC) > 0) {
+                Typeface typeface = AndroidUtilities.getTypeface("fonts/rmediumitalic.ttf");
+                if (typeface != null) {
+                    return typeface;
+                } else {
+                    Log.e(TAG, "Font file not found: fonts/rmediumitalic.ttf");
+                    return Typeface.defaultFromStyle(Typeface.BOLD_ITALIC);
+                }
             }
+            return Typeface.DEFAULT;
         }
     }
 }

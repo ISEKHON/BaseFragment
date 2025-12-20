@@ -198,6 +198,10 @@ public class AndroidUtilities {
     public static Pattern BAD_CHARS_MESSAGE_LONG_PATTERN = null;
     private static Pattern singleTagPatter = null;
 
+
+    public static ThreadLocal<byte[]> readBufferLocal = new ThreadLocal<>();
+    public static ThreadLocal<byte[]> bufferLocal = new ThreadLocal<>();
+
     static {
         try {
             final String GOOD_IRI_CHAR = "a-zA-Z0-9\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF";
@@ -437,6 +441,62 @@ public class AndroidUtilities {
             }), 36);
         }
     }
+
+    public static String readRes(int rawRes) {
+        return readRes(null, rawRes);
+    }
+
+    public static String readRes(File path) {
+        return readRes(path, 0);
+    }
+
+    public static String readRes(File path, int rawRes) {
+        int totalRead = 0;
+        byte[] readBuffer = readBufferLocal.get();
+        if (readBuffer == null) {
+            readBuffer = new byte[64 * 1024];
+            readBufferLocal.set(readBuffer);
+        }
+        InputStream inputStream = null;
+        try {
+            if (path != null) {
+                inputStream = new FileInputStream(path);
+            } else {
+                inputStream = ApplicationLoader.applicationContext.getResources().openRawResource(rawRes);
+            }
+            int readLen;
+            byte[] buffer = bufferLocal.get();
+            if (buffer == null) {
+                buffer = new byte[4096];
+                bufferLocal.set(buffer);
+            }
+            while ((readLen = inputStream.read(buffer, 0, buffer.length)) >= 0) {
+                if (readBuffer.length < totalRead + readLen) {
+                    byte[] newBuffer = new byte[readBuffer.length * 2];
+                    System.arraycopy(readBuffer, 0, newBuffer, 0, totalRead);
+                    readBuffer = newBuffer;
+                    readBufferLocal.set(readBuffer);
+                }
+                if (readLen > 0) {
+                    System.arraycopy(buffer, 0, readBuffer, totalRead, readLen);
+                    totalRead += readLen;
+                }
+            }
+        } catch (Throwable e) {
+            return null;
+        } finally {
+            try {
+                if (inputStream != null) {
+                    inputStream.close();
+                }
+            } catch (Throwable ignore) {
+
+            }
+        }
+
+        return new String(readBuffer, 0, totalRead);
+    }
+
 
     private static class LinkSpec {
         String url;
