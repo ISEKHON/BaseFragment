@@ -2,6 +2,7 @@ package xyz.illuminate.ui;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Build;
@@ -16,11 +17,13 @@ import android.view.Menu;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
+import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 
+import androidx.annotation.RequiresApi;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import java.lang.StringBuilder;
@@ -36,13 +39,139 @@ import xyz.illuminate.ui.ActionBar.ActionBar;
 import xyz.illuminate.ui.ActionBar.BackDrawable;
 import xyz.illuminate.ui.ActionBar.BaseFragment;
 import xyz.illuminate.ui.ActionBar.Theme;
+import xyz.illuminate.ui.ActionBar.ThemeDescription;
 import xyz.illuminate.ui.Adapters.CommentsAdapter;
+import xyz.illuminate.ui.Cells.TextSettingsCell;
 import xyz.illuminate.ui.Components.AlertsCreator;
 import xyz.illuminate.ui.Components.EditTextCaption;
 import xyz.illuminate.ui.Components.LayoutHelper;
 import xyz.illuminate.ui.Components.SizeNotifierFrameLayout;
 import xyz.illuminate.ui.Components.TextStyleSpan;
 import xyz.illuminate.ui.Components.TypefaceSpan;
+import xyz.illuminate.ui.Components.blur3.DownscaleScrollableNoiseSuppressor;
+import xyz.illuminate.ui.Components.blur3.drawable.BlurredBackgroundDrawableRenderNode;
+import xyz.illuminate.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
+import xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode;
+
+import android.widget.AbsListView;
+
+/**
+ * CommentsActivity - Demonstrates the Telegram blur3 system for liquid glass effects
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * LIQUID GLASS EFFECT IMPLEMENTATION GUIDE
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * The blur3 system from Telegram provides a sophisticated multi-layer blur and
+ * liquid glass effect. Here's how to use it:
+ * 
+ * ╔═══════════════════════════════════════════════════════════════════════╗
+ * ║ 1. REQUIREMENTS                                                       ║
+ * ╚═══════════════════════════════════════════════════════════════════════╝
+ * 
+ *   • Android 12+ (API 31) for blur effects (RenderEffect)
+ *   • Android 13+ (API 33) for liquid glass shader (RuntimeShader with AGSL)
+ *   • Hardware acceleration enabled on Canvas
+ *   • liquid_glass_shader.agsl file in res/raw/
+ * 
+ * ╔═══════════════════════════════════════════════════════════════════════╗
+ * ║ 2. BASIC USAGE - Simple Blur                                         ║
+ * ╚═══════════════════════════════════════════════════════════════════════╝
+ * 
+ *   // Create blur source
+ *   BlurredBackgroundSourceRenderNode source = 
+ *       new BlurredBackgroundSourceRenderNode(fallbackColorSource);
+ *   
+ *   // Create drawable from source
+ *   BlurredBackgroundDrawableRenderNode drawable = 
+ *       (BlurredBackgroundDrawableRenderNode) source.createDrawable();
+ *   
+ *   // Configure appearance
+ *   drawable.setRadius(dp(16));  // Corner radius
+ *   drawable.setColorProvider(colorProvider);
+ * 
+ * ╔═══════════════════════════════════════════════════════════════════════╗
+ * ║ 3. LIQUID GLASS EFFECT - Advanced                                    ║
+ * ╚═══════════════════════════════════════════════════════════════════════╝
+ * 
+ *   // Enable liquid glass shader (Android 13+)
+ *   drawable.setLiquidGlassEffectAllowed();
+ *   
+ *   // Configure glass properties
+ *   drawable.setThickness(dp(11));      // Glass thickness
+ *   drawable.setIntensity(0.75f);       // Refraction intensity (0.0-1.0)
+ * 
+ * ╔═══════════════════════════════════════════════════════════════════════╗
+ * ║ 4. RENDERING PIPELINE                                                 ║
+ * ╚═══════════════════════════════════════════════════════════════════════╝
+ * 
+ *   In your view's dispatchDraw():
+ *   
+ *   1. Record content to blur:
+ *      RecordingCanvas rc = source.beginRecording(width, height);
+ *      // Draw background content here
+ *      source.endRecording();
+ *   
+ *   2. Set drawable bounds:
+ *      drawable.setBounds(0, 0, width, height);
+ *   
+ *   3. Update colors (if needed):
+ *      drawable.updateColors();
+ *   
+ *   4. Draw the blurred result:
+ *      drawable.draw(canvas);
+ * 
+ * ╔═══════════════════════════════════════════════════════════════════════╗
+ * ║ 5. ADVANCED - DownscaleScrollableNoiseSuppressor                     ║
+ * ╚═══════════════════════════════════════════════════════════════════════╝
+ * 
+ *   For complex scrollable content with multiple blur regions:
+ *   
+ *   DownscaleScrollableNoiseSuppressor suppressor = 
+ *       new DownscaleScrollableNoiseSuppressor();
+ *   
+ *   // Setup render nodes for blur regions
+ *   ArrayList<RectF> positions = new ArrayList<>();
+ *   positions.add(new RectF(0, 0, width, height));
+ *   suppressor.setupRenderNodes(positions, 1);
+ *   
+ *   // Record content
+ *   RecordingCanvas rc = suppressor.beginRecordingRect(0);
+ *   // Draw content
+ *   suppressor.endRecordingRect();
+ *   
+ *   // Invalidate and draw
+ *   suppressor.invalidateResultRenderNodes(width, height);
+ *   suppressor.draw(canvas, DRAW_GLASS);  // or DRAW_FROSTED_GLASS
+ * 
+ * ╔═══════════════════════════════════════════════════════════════════════╗
+ * ║ 6. COLOR PROVIDER                                                     ║
+ * ╚═══════════════════════════════════════════════════════════════════════╝
+ * 
+ *   Implement BlurredBackgroundColorProvider for theming:
+ *   
+ *   - getBackgroundColor(): Base color (semi-transparent for glass effect)
+ *   - getShadowColor(): Drop shadow color
+ *   - getStrokeColorTop(): Top highlight stroke
+ *   - getStrokeColorBottom(): Bottom shadow stroke
+ * 
+ * ╔═══════════════════════════════════════════════════════════════════════╗
+ * ║ 7. PERFORMANCE TIPS                                                   ║
+ * ╚═══════════════════════════════════════════════════════════════════════╝
+ * 
+ *   • Use setLayerType(LAYER_TYPE_HARDWARE, null) on container views
+ *   • The blur uses downsampling for performance (4x/16x downscale)
+ *   • Liquid glass mode uses weak blur + strong blur combination
+ *   • Only update display list when content actually changes
+ *   • Use RenderNode caching to avoid redundant rendering
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * See the methods below for complete working examples:
+ *   - demonstrateBlur3Component(): Main entry point
+ *   - createLiquidGlassEffect(): Full liquid glass implementation
+ *   - createAdvancedLiquidGlassEffect(): Using DownscaleScrollableNoiseSuppressor
+ */
 
 public class CommentsActivity extends BaseFragment {
     CommentsAdapter mAdapter;
@@ -54,6 +183,12 @@ public class CommentsActivity extends BaseFragment {
     LinearLayoutManager layoutManager;
     ListView listView;
     FrameLayout activeBlurContainer; // Store blur container for scroll updates
+    
+    // Glass stroke buttons for theme updates
+    private android.widget.Button blurTestButton;
+    private android.widget.Button frostedGlassButton;
+    private android.widget.Button combinedBlurButton;
+    private android.widget.Button glassStrokeButton;
 
     @Override
     protected ActionBar createActionBar(Context context) {
@@ -82,12 +217,17 @@ public class CommentsActivity extends BaseFragment {
         fragmentView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
         container = inflatedView.findViewById(R.id.linear_content);
         contentView = new FrameLayout(context);
+        contentView.setClipToPadding(false);
         container.addView(contentView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         ((ViewGroup) fragmentView).addView(inflatedView);
 
         listView = new ListView(context);
         layoutManager = new LinearLayoutManager(context);
         mAdapter = new CommentsAdapter(this, comments);
+        
+        // Add bottom padding so content doesn't hide behind floating input
+        listView.setClipToPadding(false);
+        listView.setPadding(0, 0, 0, AndroidUtilities.dp(80)); // Reserve space for input
 
         contentView.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
@@ -97,17 +237,30 @@ public class CommentsActivity extends BaseFragment {
                 fillActionModeMenu(menu);
             }
         };
-        commentEdit.setHint("Enter something");
-        commentEdit.setTextSize(14);
+        commentEdit.setHint("Message");
+        commentEdit.setHintTextColor(Theme.multAlpha(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText), 0.4f));
+        commentEdit.setTextSize(16);
         commentEdit.setWindowView(getParentActivity().getWindow().getDecorView());
         commentEdit.setAllowTextEntitiesIntersection(true);
         commentEdit.setIncludeFontPadding(false);
-        commentEdit.setMaxLines(20);
+        commentEdit.setMaxLines(5);
         commentEdit.setDelegate(() -> {
             commentEdit.invalidateEffects();
         });
         commentEdit.setBackgroundColor(Color.TRANSPARENT);
         commentEdit.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+
+
+        addSampleComments();
+        addSampleComments();
+        addSampleComments();
+        
+        // Apply Telegram-style blur to message input after layout
+        fragmentView.post(() -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                createMessageInputBlur(context, inflatedView);
+            }
+        });
         
         // Add TextWatcher for manual formatting
         commentEdit.addTextChangedListener(new android.text.TextWatcher() {
@@ -215,21 +368,177 @@ public class CommentsActivity extends BaseFragment {
         });
 
         // Add a blur test button
-        ImageView blurTestButton = new ImageView(context);
-        blurTestButton.setImageResource(R.drawable.msg_edit);
-        blurTestButton.setImageTintList(ColorStateList.valueOf(Theme.getColor(Theme.key_buttonBackgroundBlue)));
-        blurTestButton.setBackground(Theme.getSelectorDrawable(!Theme.currentTheme.isDark));
-        blurTestButton.setPadding(AndroidUtilities.dp(8), AndroidUtilities.dp(8), AndroidUtilities.dp(8), AndroidUtilities.dp(8));
+        blurTestButton = createGlassStrokeButton(context, "Liquid Glass");
         blurTestButton.setOnClickListener(view -> {
             demonstrateBlur3Component(context);
         });
-        LinearLayout.LayoutParams blurButtonParams = new LinearLayout.LayoutParams(AndroidUtilities.dp(48), AndroidUtilities.dp(48));
-        blurButtonParams.gravity = Gravity.END | Gravity.CENTER_VERTICAL;
-        blurButtonParams.setMargins(AndroidUtilities.dp(8), 0, AndroidUtilities.dp(8), 0);
-        ((LinearLayout) inflatedView.findViewById(R.id.view_test)).addView(blurTestButton, blurButtonParams);
-        ((LinearLayout) inflatedView.findViewById(R.id.view_test)).addView(testButton, blurButtonParams);
+        
+        // Add a frosted glass button (alternative blur style)
+        frostedGlassButton = createGlassStrokeButton(context, "Frosted Glass");
+        frostedGlassButton.setOnClickListener(view -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                createAdvancedLiquidGlassEffect(context);
+                AndroidUtilities.showToast("Advanced frosted glass with noise suppression!");
+            } else {
+                AndroidUtilities.showToast("Requires Android 12+");
+            }
+        });
+        
+        // Add a combined liquid glass + blur button (best of both)
+        combinedBlurButton = createGlassStrokeButton(context, "Premium Glass");
+        combinedBlurButton.setOnClickListener(view -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                createCombinedLiquidGlassWithBlur(context);
+                AndroidUtilities.showToast("Premium liquid glass with enhanced blur!");
+            } else {
+                AndroidUtilities.showToast("Requires Android 12+");
+            }
+        });
+        
+        // Add a blur with glass stroke button (emphasized borders)
+        glassStrokeButton = createGlassStrokeButton(context, "Glass Stroke");
+        glassStrokeButton.setOnClickListener(view -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                createBlurWithGlassStroke(context);
+                AndroidUtilities.showToast("Glass blur with prominent strokes!");
+            } else {
+                AndroidUtilities.showToast("Requires Android 12+");
+            }
+        });
+        
+        // Create a horizontal scrollable container for the buttons
+        android.widget.HorizontalScrollView buttonScrollView = new android.widget.HorizontalScrollView(context);
+        buttonScrollView.setHorizontalScrollBarEnabled(false);
+        buttonScrollView.setFillViewport(false);
+        
+        LinearLayout buttonContainer = new LinearLayout(context);
+        buttonContainer.setOrientation(LinearLayout.HORIZONTAL);
+        buttonContainer.setGravity(Gravity.CENTER_VERTICAL);
+        
+        LinearLayout.LayoutParams blurButtonParams = new LinearLayout.LayoutParams(
+            LayoutHelper.WRAP_CONTENT, 
+            LayoutHelper.WRAP_CONTENT
+        );
+        blurButtonParams.gravity = Gravity.CENTER_VERTICAL;
+        blurButtonParams.setMargins(AndroidUtilities.dp(4), AndroidUtilities.dp(4), AndroidUtilities.dp(4), AndroidUtilities.dp(4));
+        
+        buttonContainer.addView(glassStrokeButton, blurButtonParams);
+        buttonContainer.addView(combinedBlurButton, blurButtonParams);
+        buttonContainer.addView(frostedGlassButton, blurButtonParams);
+        buttonContainer.addView(blurTestButton, blurButtonParams);
+        buttonContainer.addView(testButton, blurButtonParams);
+        
+        buttonScrollView.addView(buttonContainer);
+        
+        ((LinearLayout) inflatedView.findViewById(R.id.view_test)).addView(buttonScrollView, LayoutHelper.createLinear(
+            LayoutHelper.MATCH_PARENT, 
+            LayoutHelper.WRAP_CONTENT
+        ));
 
         return fragmentView;
+    }
+
+    /**
+     * Creates a button with actual blur3 glass stroke effect and rounded corners (Telegram style)
+     */
+    private android.widget.Button createGlassStrokeButton(Context context, String text) {
+        // Create blur source with fallback
+        xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceColor fallbackSource = 
+            new xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceColor();
+        fallbackSource.setColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        
+        xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode blurSource = 
+            new xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode(fallbackSource);
+        
+        // Create the blur drawable
+        xyz.illuminate.ui.Components.blur3.drawable.BlurredBackgroundDrawableRenderNode blurDrawable = 
+            (xyz.illuminate.ui.Components.blur3.drawable.BlurredBackgroundDrawableRenderNode) blurSource.createDrawable();
+        
+        // Configure glass properties
+        blurDrawable.setRadius(AndroidUtilities.dp(20)); // Rounded corners
+        
+        // Set color provider for glass effect
+        blurDrawable.setColorProvider(new xyz.illuminate.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider() {
+            @Override
+            public int getBackgroundColor() {
+                // Semi-transparent blue background
+                return Theme.multAlpha(Theme.getColor(Theme.key_buttonBackgroundBlue), 0.85f);
+            }
+
+            @Override
+            public int getShadowColor() {
+                return 0x30000000;
+            }
+
+            @Override
+            public int getStrokeColorTop() {
+                // Bright white top stroke for glass shine
+                return 0x60FFFFFF;
+            }
+
+            @Override
+            public int getStrokeColorBottom() {
+                // Darker bottom stroke
+                return 0x30000000;
+            }
+        });
+        
+        // Create button with blur3 background
+        android.widget.Button button = new android.widget.Button(context) {
+            private boolean isRecording = false;
+            
+            @Override
+            protected void onDraw(Canvas canvas) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && canvas.isHardwareAccelerated() && !isRecording) {
+                    // Record background content for blur
+                    if (blurSource.needUpdateDisplayList(getWidth(), getHeight())) {
+                        isRecording = true;
+                        android.graphics.RecordingCanvas recordingCanvas = blurSource.beginRecording(getWidth(), getHeight());
+                        recordingCanvas.save();
+                        recordingCanvas.translate(-getLeft(), -getTop());
+                        View parent = (View) getParent();
+                        if (parent != null) {
+                            int oldVisibility = getVisibility();
+                            setVisibility(View.INVISIBLE);
+                            parent.draw(recordingCanvas);
+                            setVisibility(oldVisibility);
+                        }
+                        recordingCanvas.restore();
+                        blurSource.endRecording();
+                        isRecording = false;
+                    }
+
+                    // Draw blurred background with glass effect
+                    blurDrawable.setBounds(0, 0, getWidth(), getHeight());
+                    blurDrawable.updateColors();
+                    blurDrawable.draw(canvas);
+                } else {
+                    // Fallback for older Android versions
+                    canvas.drawColor(Theme.getColor(Theme.key_buttonBackgroundBlue));
+                }
+                
+                super.onDraw(canvas);
+            }
+        };
+        
+        button.setText(text);
+        button.setTextColor(Color.WHITE);
+        button.setTextSize(12);
+        button.setTypeface(null, Typeface.BOLD);
+        button.setAllCaps(false);
+        button.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(10), AndroidUtilities.dp(16), AndroidUtilities.dp(10));
+        button.setBackground(null); // Remove default background
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            button.setElevation(AndroidUtilities.dp(2));
+            button.setStateListAnimator(null);
+        }
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            button.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        }
+        
+        return button;
     }
 
     public void sendMessage(String message) {
@@ -417,142 +726,631 @@ public class CommentsActivity extends BaseFragment {
     }
 
     /**
-     * Demonstrates progressive blur effect on the ListView content
-     * Now updates dynamically as you scroll!
+     * Demonstrates the liquid glass effect with blur3 system from Telegram
+     * This creates a beautiful frosted glass effect with dynamic blur
      */
     public void demonstrateBlur3Component(Context context) {
-        android.util.Log.d("CommentsActivity", "Demonstrating progressive blur with ListView content");
+        android.util.Log.d("CommentsActivity", "Demonstrating liquid glass effect with blur3 system");
+
+        // Remove old glass panel if exists
+        if (activeBlurContainer != null && activeBlurContainer.getParent() != null) {
+            ((ViewGroup) activeBlurContainer.getParent()).removeView(activeBlurContainer);
+            activeBlurContainer = null;
+        }
 
         // Make sure we have some content in the ListView to blur
         if (comments.isEmpty()) {
-            // Add sample content for demonstration
             addSampleComments();
         }
 
-        // Progressive blur effect on ListView (Android 12+)
+        // Liquid glass effect (Android 12+ for blur, Android 13+ for liquid glass shader)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            createActualBlurEffectOnListView(context);
-            setupScrollListenerForBlur();
-            AndroidUtilities.showToast("Live progressive blur enabled - scroll to see!");
+            createLiquidGlassEffect(context);
+            AndroidUtilities.showToast("Liquid glass effect enabled!");
         } else {
             AndroidUtilities.showToast("Blur requires Android 12+ (API 31)");
         }
     }
 
     /**
-     * Sets up scroll listener to update blur in real-time as user scrolls
+     * Creates a beautiful liquid glass effect using the blur3 system from Telegram
+     * This demonstrates the full power of the ported blur3 components
      */
     @androidx.annotation.RequiresApi(api = Build.VERSION_CODES.S)
-    private void setupScrollListenerForBlur() {
-        listView.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
-            private long lastUpdateTime = 0;
-            private static final long UPDATE_INTERVAL = 16; // ~60 FPS
-            private boolean isScrolling = false;
+    private void createLiquidGlassEffect(Context context) {
+        android.util.Log.d("CommentsActivity", "Creating liquid glass effect with blur3 system");
 
+        // Step 1: Create the blur source from the content view
+        xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceColor fallbackSource = 
+            new xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceColor();
+        fallbackSource.setColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        
+        xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode blurSource = 
+            new xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode(fallbackSource);
+
+        // Step 2: Create the drawable that will render the blurred background
+        xyz.illuminate.ui.Components.blur3.drawable.BlurredBackgroundDrawableRenderNode blurDrawable = 
+            (xyz.illuminate.ui.Components.blur3.drawable.BlurredBackgroundDrawableRenderNode) blurSource.createDrawable();
+        
+        // Step 3: Enable liquid glass effect if on Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            blurDrawable.setLiquidGlassEffectAllowed();
+            android.util.Log.d("CommentsActivity", "Liquid glass shader enabled!");
+        }
+
+        // Step 4: Configure the blur drawable
+        blurDrawable.setRadius(AndroidUtilities.dp(16)); // Rounded corners
+        blurDrawable.setThickness(AndroidUtilities.dp(11)); // Glass thickness
+        blurDrawable.setIntensity(0.75f); // Refraction intensity
+        
+        // Step 5: Set color provider for theming
+        blurDrawable.setColorProvider(new xyz.illuminate.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider() {
             @Override
-            public void onScrollStateChanged(android.widget.AbsListView view, int scrollState) {
-                if (scrollState == SCROLL_STATE_IDLE) {
-                    isScrolling = false;
-                    // Final update when scroll stops for crisp result
-                    if (activeBlurContainer != null) {
-                        updateBlurEffect();
-                    }
-                } else {
-                    isScrolling = true;
-                }
+            public int getBackgroundColor() {
+                // Semi-transparent white for glass effect
+                return 0x40FFFFFF;
             }
 
             @Override
-            public void onScroll(android.widget.AbsListView view, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
-                if (activeBlurContainer != null && isScrolling) {
-                    long currentTime = System.currentTimeMillis();
+            public int getShadowColor() {
+                // Subtle shadow
+                return 0x20000000;
+            }
 
-                    // Throttle updates to prevent excessive calls
-                    if (currentTime - lastUpdateTime >= UPDATE_INTERVAL) {
-                        lastUpdateTime = currentTime;
-                        updateBlurEffect();
-                    }
-                }
+            @Override
+            public int getStrokeColorTop() {
+                // Light top stroke for glass reflection
+                return 0x30FFFFFF;
+            }
+
+            @Override
+            public int getStrokeColorBottom() {
+                // Darker bottom stroke
+                return 0x20000000;
             }
         });
+
+        // Step 6: Create a view to hold the glass effect
+        FrameLayout glassContainer = new FrameLayout(context) {
+            private boolean isRecording = false;
+            
+            @Override
+            protected void dispatchDraw(Canvas canvas) {
+                if (!canvas.isHardwareAccelerated()) {
+                    super.dispatchDraw(canvas);
+                    return;
+                }
+                
+                // Prevent recursive drawing during recording
+                if (isRecording) {
+                    return;
+                }
+                
+                // First, capture the background content into the blur source
+                if (blurSource.needUpdateDisplayList(getWidth(), getHeight())) {
+                    isRecording = true;
+                    android.graphics.RecordingCanvas recordingCanvas = blurSource.beginRecording(getWidth(), getHeight());
+                    
+                    // Draw the content behind this view (ListView)
+                    recordingCanvas.save();
+                    // Translate by both X and Y to capture exact background position
+                    recordingCanvas.translate(-getLeft(), -getTop());
+                    View parent = (View) getParent();
+                    if (parent != null) {
+                        // Temporarily hide this view to avoid recursive drawing
+                        int oldVisibility = getVisibility();
+                        setVisibility(View.INVISIBLE);
+                        parent.draw(recordingCanvas);
+                        setVisibility(oldVisibility);
+                    }
+                    recordingCanvas.restore();
+                    
+                    blurSource.endRecording();
+                    isRecording = false;
+                }
+
+                // Set bounds for the drawable
+                blurDrawable.setBounds(0, 0, getWidth(), getHeight());
+                blurDrawable.updateColors();
+                
+                // Draw the blurred background
+                blurDrawable.draw(canvas);
+                
+                // Draw children on top
+                super.dispatchDraw(canvas);
+            }
+        };
+
+        glassContainer.setWillNotDraw(false);
+        glassContainer.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+
+        // Step 7: Add content to the glass container
+        android.widget.TextView titleView = new android.widget.TextView(context);
+        titleView.setText("Liquid Glass Effect");
+        titleView.setTextColor(0xFF000000);
+        titleView.setGravity(Gravity.CENTER);
+        titleView.setTextSize(20);
+        titleView.setTypeface(null, android.graphics.Typeface.BOLD);
+        titleView.setShadowLayer(4, 0, 0, Color.WHITE);
+        
+        android.widget.TextView descView = new android.widget.TextView(context);
+        descView.setText("Using blur3 system from Telegram\n" +
+                       (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? 
+                        "with custom AGSL shader" : "with standard blur"));
+        descView.setTextColor(0xFF666666);
+        descView.setGravity(Gravity.CENTER);
+        descView.setTextSize(12);
+        descView.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(8), AndroidUtilities.dp(16), 0);
+
+        LinearLayout textContainer = new LinearLayout(context);
+        textContainer.setOrientation(LinearLayout.VERTICAL);
+        textContainer.setGravity(Gravity.CENTER);
+        textContainer.addView(titleView);
+        textContainer.addView(descView);
+
+        glassContainer.addView(textContainer, LayoutHelper.createFrame(
+            LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER
+        ));
+
+        // Step 8: Add to content view
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+            AndroidUtilities.dp(300), 
+            AndroidUtilities.dp(180)
+        );
+        params.gravity = Gravity.CENTER;
+        contentView.addView(glassContainer, params);
+
+        // Step 9: Animate the glass effect
+        glassContainer.setScaleX(0.8f);
+        glassContainer.setScaleY(0.8f);
+        glassContainer.setAlpha(0f);
+        glassContainer.animate()
+            .scaleX(1f)
+            .scaleY(1f)
+            .alpha(1f)
+            .setDuration(300)
+            .start();
+
+        activeBlurContainer = glassContainer;
+        android.util.Log.d("CommentsActivity", "Liquid glass effect created successfully!");
     }
 
     /**
-     * Updates the blur effect by recapturing the ListView content
-     * Optimized for smooth real-time updates during scrolling
+     * Alternative implementation using DownscaleScrollableNoiseSuppressor
+     * This is the advanced multi-layer blur system used in Telegram
      */
     @androidx.annotation.RequiresApi(api = Build.VERSION_CODES.S)
-    private void updateBlurEffect() {
-        if (activeBlurContainer == null || listView == null) return;
-
-        try {
-            // Get position of blur container
-            int[] location = new int[2];
-            activeBlurContainer.getLocationInWindow(location);
-            int[] contentLocation = new int[2];
-            contentView.getLocationInWindow(contentLocation);
-
-            int relativeX = location[0] - contentLocation[0];
-            int relativeY = location[1] - contentLocation[1];
-
-            // Recapture the ListView content
-            android.graphics.Bitmap capturedBitmap = captureBitmapFromView(
-                listView,
-                relativeX,
-                relativeY,
-                activeBlurContainer.getWidth(),
-                activeBlurContainer.getHeight()
-            );
-
-            if (capturedBitmap != null) {
-                // Store reference to text view to keep it
-                android.widget.TextView textView = null;
-                View overlayView = null;
-
-                // Find and keep text and overlay
-                for (int i = 0; i < activeBlurContainer.getChildCount(); i++) {
-                    View child = activeBlurContainer.getChildAt(i);
-                    if (child instanceof android.widget.TextView) {
-                        textView = (android.widget.TextView) child;
-                    } else if (!(child instanceof android.widget.ImageView)) {
-                        overlayView = child;
-                    }
-                }
-
-                // Remove ALL children
-                activeBlurContainer.removeAllViews();
-
-                // Recreate blur layers with new content (faster recreation)
-                createProgressiveBlurLayers(getParentActivity(), activeBlurContainer, capturedBitmap);
-
-                // Add overlay back
-                if (overlayView != null) {
-                    activeBlurContainer.addView(overlayView);
-                }
-
-                // Add text back on top
-                if (textView != null) {
-                    activeBlurContainer.addView(textView);
-                }
-            }
-        } catch (Exception e) {
-            android.util.Log.e("CommentsActivity", "Error updating blur effect", e);
+    private void createAdvancedLiquidGlassEffect(Context context) {
+        // Remove old glass panel if exists
+        if (activeBlurContainer != null && activeBlurContainer.getParent() != null) {
+            ((ViewGroup) activeBlurContainer.getParent()).removeView(activeBlurContainer);
+            activeBlurContainer = null;
         }
+
+        // Create the downscale suppressor with liquid glass enabled
+        xyz.illuminate.ui.Components.blur3.DownscaleScrollableNoiseSuppressor noiseSuppressor =
+            new xyz.illuminate.ui.Components.blur3.DownscaleScrollableNoiseSuppressor();
+
+        // Create container
+        FrameLayout advancedGlassContainer = new FrameLayout(context) {
+            private boolean isRecording = false;
+            
+            @Override
+            protected void dispatchDraw(Canvas canvas) {
+                if (!canvas.isHardwareAccelerated()) {
+                    super.dispatchDraw(canvas);
+                    return;
+                }
+                
+                // Prevent recursive drawing during recording
+                if (isRecording) {
+                    return;
+                }
+
+                // Setup render nodes if needed
+                if (noiseSuppressor.getRenderNodesCount() == 0) {
+                    java.util.ArrayList<android.graphics.RectF> positions = new java.util.ArrayList<>();
+                    positions.add(new android.graphics.RectF(0, 0, getWidth(), getHeight()));
+                    noiseSuppressor.setupRenderNodes(positions, 1);
+                }
+
+                // Record content to blur
+                isRecording = true;
+                android.graphics.RecordingCanvas recordingCanvas = noiseSuppressor.beginRecordingRect(0);
+                recordingCanvas.save();
+                // Translate by both X and Y to capture exact background position
+                recordingCanvas.translate(-getLeft(), -getTop());
+                View parent = (View) getParent();
+                if (parent != null) {
+                    // Temporarily hide this view to avoid recursive drawing
+                    int oldVisibility = getVisibility();
+                    setVisibility(View.INVISIBLE);
+                    parent.draw(recordingCanvas);
+                    setVisibility(oldVisibility);
+                }
+                recordingCanvas.restore();
+                noiseSuppressor.endRecordingRect();
+                isRecording = false;
+
+                // Invalidate and draw
+                noiseSuppressor.invalidateResultRenderNodes(getWidth(), getHeight());
+                noiseSuppressor.draw(canvas, xyz.illuminate.ui.Components.blur3.DownscaleScrollableNoiseSuppressor.DRAW_GLASS);
+
+                super.dispatchDraw(canvas);
+            }
+        };
+
+        advancedGlassContainer.setWillNotDraw(false);
+        advancedGlassContainer.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+
+        android.widget.TextView label = new android.widget.TextView(context);
+        label.setText("Advanced Liquid Glass\nwith Noise Suppression");
+        label.setTextColor(0xFF000000);
+        label.setGravity(Gravity.CENTER);
+        label.setTextSize(16);
+        label.setTypeface(null, android.graphics.Typeface.BOLD);
+
+        advancedGlassContainer.addView(label, LayoutHelper.createFrame(
+            LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER
+        ));
+
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+            AndroidUtilities.dp(280), 
+            AndroidUtilities.dp(140)
+        );
+        params.gravity = Gravity.CENTER;
+        contentView.addView(advancedGlassContainer, params);
     }
+
+    /**
+     * Premium implementation combining liquid glass shader with enhanced blur
+     * This creates the most premium glass effect with both refraction and strong blur
+     */
+    @androidx.annotation.RequiresApi(api = Build.VERSION_CODES.S)
+    private void createCombinedLiquidGlassWithBlur(Context context) {
+        android.util.Log.d("CommentsActivity", "Creating COMBINED liquid glass + enhanced blur");
+
+        // Remove old glass panel if exists
+        if (activeBlurContainer != null && activeBlurContainer.getParent() != null) {
+            ((ViewGroup) activeBlurContainer.getParent()).removeView(activeBlurContainer);
+            activeBlurContainer = null;
+        }
+
+        // Step 1: Create blur source with fallback
+        xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceColor fallbackSource = 
+            new xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceColor();
+        fallbackSource.setColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        
+        xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode blurSource = 
+            new xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode(fallbackSource);
+        
+        // Step 2: Apply additional blur to the source itself (Android 12+)
+        blurSource.setBlur(30f); // Pre-blur before liquid glass shader
+        
+        // Step 3: Create drawable
+        xyz.illuminate.ui.Components.blur3.drawable.BlurredBackgroundDrawableRenderNode blurDrawable = 
+            (xyz.illuminate.ui.Components.blur3.drawable.BlurredBackgroundDrawableRenderNode) blurSource.createDrawable();
+        
+        // Step 4: Enable liquid glass shader on top of blur (Android 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            blurDrawable.setLiquidGlassEffectAllowed();
+            android.util.Log.d("CommentsActivity", "Premium: Liquid glass shader + blur!");
+        }
+
+        // Step 5: Configure premium glass properties
+        blurDrawable.setRadius(AndroidUtilities.dp(20)); // Larger corners
+        blurDrawable.setThickness(AndroidUtilities.dp(15)); // Thicker glass
+        blurDrawable.setIntensity(0.9f); // Higher refraction intensity
+        
+        // Step 6: Premium color provider with gradient-like effect
+        blurDrawable.setColorProvider(new xyz.illuminate.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider() {
+            @Override
+            public int getBackgroundColor() {
+                // Very subtle white tint to let blur show through
+                return 0x30FFFFFF;
+            }
+
+            @Override
+            public int getShadowColor() {
+                // Stronger shadow for depth
+                return 0x40000000;
+            }
+
+            @Override
+            public int getStrokeColorTop() {
+                // Bright top highlight for glass shine
+                return 0x50FFFFFF;
+            }
+
+            @Override
+            public int getStrokeColorBottom() {
+                // Darker bottom for depth
+                return 0x30000000;
+            }
+        });
+
+        // Step 7: Create premium container
+        FrameLayout premiumGlassContainer = new FrameLayout(context) {
+            private boolean isRecording = false;
+            
+            @Override
+            protected void dispatchDraw(Canvas canvas) {
+                if (!canvas.isHardwareAccelerated()) {
+                    super.dispatchDraw(canvas);
+                    return;
+                }
+                
+                if (isRecording) {
+                    return;
+                }
+                
+                // Record and blur background
+                if (blurSource.needUpdateDisplayList(getWidth(), getHeight())) {
+                    isRecording = true;
+                    android.graphics.RecordingCanvas recordingCanvas = blurSource.beginRecording(getWidth(), getHeight());
+                    
+                    recordingCanvas.save();
+                    // Translate by both X and Y to capture exact background position
+                    recordingCanvas.translate(-getLeft(), -getTop());
+                    View parent = (View) getParent();
+                    if (parent != null) {
+                        int oldVisibility = getVisibility();
+                        setVisibility(View.INVISIBLE);
+                        parent.draw(recordingCanvas);
+                        setVisibility(oldVisibility);
+                    }
+                    recordingCanvas.restore();
+                    
+                    blurSource.endRecording();
+                    isRecording = false;
+                }
+
+                blurDrawable.setBounds(0, 0, getWidth(), getHeight());
+                blurDrawable.updateColors();
+                blurDrawable.draw(canvas);
+                
+                super.dispatchDraw(canvas);
+            }
+        };
+
+        premiumGlassContainer.setWillNotDraw(false);
+        premiumGlassContainer.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        premiumGlassContainer.setElevation(AndroidUtilities.dp(16)); // Higher elevation
+
+        // Step 8: Premium content
+        LinearLayout contentLayout = new LinearLayout(context);
+        contentLayout.setOrientation(LinearLayout.VERTICAL);
+        contentLayout.setGravity(Gravity.CENTER);
+        contentLayout.setPadding(AndroidUtilities.dp(20), AndroidUtilities.dp(16), AndroidUtilities.dp(20), AndroidUtilities.dp(16));
+
+        android.widget.TextView titleView = new android.widget.TextView(context);
+        titleView.setText("Glass");
+        titleView.setTextColor(0xFF000000);
+        titleView.setGravity(Gravity.CENTER);
+        titleView.setTextSize(22);
+        titleView.setTypeface(null, android.graphics.Typeface.BOLD);
+        titleView.setShadowLayer(6, 0, 0, Color.WHITE);
+        
+        android.widget.TextView descView = new android.widget.TextView(context);
+        descView.setText("Liquid Glass Shader + Enhanced Blur\n" +
+                       (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? 
+                        "AGSL Refraction + RenderEffect Blur " : 
+                        "Enhanced Blur Effect"));
+        descView.setTextColor(0xFF555555);
+        descView.setGravity(Gravity.CENTER);
+        descView.setTextSize(13);
+        descView.setPadding(0, AndroidUtilities.dp(8), 0, 0);
+
+        contentLayout.addView(titleView);
+        contentLayout.addView(descView);
+        
+        premiumGlassContainer.addView(contentLayout, LayoutHelper.createFrame(
+            LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER
+        ));
+
+        // Step 9: Add with premium animation
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+            AndroidUtilities.dp(320), 
+            AndroidUtilities.dp(200)
+        );
+        params.gravity = Gravity.CENTER;
+        params.topMargin = AndroidUtilities.dp(-50); // Offset upwards
+        contentView.addView(premiumGlassContainer, params);
+
+        // Premium entrance animation
+        premiumGlassContainer.setScaleX(0.7f);
+        premiumGlassContainer.setScaleY(0.7f);
+        premiumGlassContainer.setAlpha(0f);
+        premiumGlassContainer.setRotation(-5f);
+        premiumGlassContainer.animate()
+            .scaleX(1f)
+            .scaleY(1f)
+            .alpha(1f)
+            .rotation(0f)
+            .setDuration(400)
+            .setInterpolator(new android.view.animation.OvershootInterpolator(1.2f))
+            .start();
+
+        activeBlurContainer = premiumGlassContainer;
+        android.util.Log.d("CommentsActivity", "Premium combined glass effect created!");
+    }
+
+    /**
+     * Creates a blur effect with prominent glass strokes/borders
+     * Emphasizes the top highlight and bottom shadow strokes for a framed glass look
+     */
+    @androidx.annotation.RequiresApi(api = Build.VERSION_CODES.S)
+    private void createBlurWithGlassStroke(Context context) {
+        android.util.Log.d("CommentsActivity", "Creating blur with prominent glass strokes");
+
+        // Remove old glass panel if exists
+        if (activeBlurContainer != null && activeBlurContainer.getParent() != null) {
+            ((ViewGroup) activeBlurContainer.getParent()).removeView(activeBlurContainer);
+            activeBlurContainer = null;
+        }
+
+        // Step 1: Create blur source
+        xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceColor fallbackSource = 
+            new xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceColor();
+        fallbackSource.setColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        
+        xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode blurSource = 
+            new xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode(fallbackSource);
+        
+        // Apply moderate blur
+        blurSource.setBlur(20f);
+        
+        // Step 2: Create drawable
+        xyz.illuminate.ui.Components.blur3.drawable.BlurredBackgroundDrawableRenderNode blurDrawable = 
+            (xyz.illuminate.ui.Components.blur3.drawable.BlurredBackgroundDrawableRenderNode) blurSource.createDrawable();
+        
+        // Step 3: Configure for stroke emphasis
+        blurDrawable.setRadius(AndroidUtilities.dp(16));
+        
+        // Step 4: Color provider with PROMINENT strokes
+        blurDrawable.setColorProvider(new xyz.illuminate.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider() {
+            @Override
+            public int getBackgroundColor() {
+                // More transparent to let blur show
+                return 0x25FFFFFF;
+            }
+
+            @Override
+            public int getShadowColor() {
+                // Strong shadow
+                return 0x60000000;
+            }
+
+            @Override
+            public int getStrokeColorTop() {
+                // BRIGHT white top stroke - the star of the show!
+                return 0xAAFFFFFF;
+            }
+
+            @Override
+            public int getStrokeColorBottom() {
+                // Strong dark bottom stroke for contrast
+                return 0x80000000;
+            }
+        });
+
+        // Step 5: Create container with stroke emphasis
+        FrameLayout strokeGlassContainer = new FrameLayout(context) {
+            private boolean isRecording = false;
+            
+            @Override
+            protected void dispatchDraw(Canvas canvas) {
+                if (!canvas.isHardwareAccelerated()) {
+                    super.dispatchDraw(canvas);
+                    return;
+                }
+                
+                if (isRecording) {
+                    return;
+                }
+                
+                // Record background
+                if (blurSource.needUpdateDisplayList(getWidth(), getHeight())) {
+                    isRecording = true;
+                    android.graphics.RecordingCanvas recordingCanvas = blurSource.beginRecording(getWidth(), getHeight());
+                    
+                    recordingCanvas.save();
+                    // Translate by both X and Y to capture exact background position
+                    recordingCanvas.translate(-getLeft(), -getTop());
+                    View parent = (View) getParent();
+                    if (parent != null) {
+                        int oldVisibility = getVisibility();
+                        setVisibility(View.INVISIBLE);
+                        parent.draw(recordingCanvas);
+                        setVisibility(oldVisibility);
+                    }
+                    recordingCanvas.restore();
+                    
+                    blurSource.endRecording();
+                    isRecording = false;
+                }
+
+                blurDrawable.setBounds(0, 0, getWidth(), getHeight());
+                blurDrawable.updateColors();
+                blurDrawable.draw(canvas);
+                
+                super.dispatchDraw(canvas);
+            }
+        };
+
+        strokeGlassContainer.setWillNotDraw(false);
+        strokeGlassContainer.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        strokeGlassContainer.setElevation(AndroidUtilities.dp(12));
+
+        // Step 6: Content that emphasizes the frame
+        LinearLayout contentLayout = new LinearLayout(context);
+        contentLayout.setOrientation(LinearLayout.VERTICAL);
+        contentLayout.setGravity(Gravity.CENTER);
+        contentLayout.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(12), AndroidUtilities.dp(16), AndroidUtilities.dp(12));
+
+        android.widget.TextView titleView = new android.widget.TextView(context);
+        titleView.setText("Glass Frame");
+        titleView.setTextColor(0xFF000000);
+        titleView.setGravity(Gravity.CENTER);
+        titleView.setTextSize(20);
+        titleView.setTypeface(null, android.graphics.Typeface.BOLD);
+        titleView.setShadowLayer(4, 0, 0, Color.WHITE);
+        
+        android.widget.TextView descView = new android.widget.TextView(context);
+        descView.setText("Blur with Prominent Strokes\nBright Top | Dark Bottom");
+        descView.setTextColor(0xFF666666);
+        descView.setGravity(Gravity.CENTER);
+        descView.setTextSize(12);
+        descView.setPadding(0, AndroidUtilities.dp(8), 0, 0);
+
+        contentLayout.addView(titleView);
+        contentLayout.addView(descView);
+        
+        strokeGlassContainer.addView(contentLayout, LayoutHelper.createFrame(
+            LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER
+        ));
+
+        // Step 7: Position and add
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+            AndroidUtilities.dp(300), 
+            AndroidUtilities.dp(160)
+        );
+        params.gravity = Gravity.CENTER;
+        params.topMargin = AndroidUtilities.dp(50); // Offset downwards
+        contentView.addView(strokeGlassContainer, params);
+
+        // Entrance animation with bounce
+        strokeGlassContainer.setScaleX(0.5f);
+        strokeGlassContainer.setScaleY(0.5f);
+        strokeGlassContainer.setAlpha(0f);
+        strokeGlassContainer.animate()
+            .scaleX(1f)
+            .scaleY(1f)
+            .alpha(1f)
+            .setDuration(350)
+            .setInterpolator(new android.view.animation.BounceInterpolator())
+            .start();
+
+        activeBlurContainer = strokeGlassContainer;
+        android.util.Log.d("CommentsActivity", "Blur with glass strokes created!");
+    }
+
 
     /**
      * Adds sample comments to the ListView for demonstration
      */
     private void addSampleComments() {
         String[] sampleMessages = {
-            "This is a **bold message**",
-            "This is an __italic message__",
-            "This is a ||spoiler message||",
-            "This is ~~strikethrough text~~",
-            "This is `code text`",
-            "Normal text message here",
-            "Another **bold** and __italic__ message",
-            "Final test message with formatting"
+            "This is a **bold message** with blur effect",
+            "This is an __italic message__ under glass",
+            "This is a ||spoiler message|| with frosted glass",
+            "This is ~~strikethrough text~~ demonstrating blur",
+            "This is `code text` with liquid glass",
+            "Normal text message with beautiful blur background",
+            "Another **bold** and __italic__ message showing glass effect",
+            "Final test message with formatting and liquid glass",
+            "The blur3 system provides smooth, efficient blur",
+            "It uses RenderNode and RenderEffect for performance"
         };
 
         for (String message : sampleMessages) {
@@ -565,225 +1363,212 @@ public class CommentsActivity extends BaseFragment {
         listView.setAdapter(new CommentsAdapter(this, comments));
         ((BaseAdapter) listView.getAdapter()).notifyDataSetChanged();
     }
-
-
+    
     /**
-     * Example 4: Creates PROGRESSIVE blur effect on the ListView
-     * Blur intensity increases from edges to center for a dynamic effect
+     * Creates Telegram-style frosted glass blur effect for the message input field.
+     * This applies a beautiful blur to the comment input container at the bottom.
      */
-    @androidx.annotation.RequiresApi(api = Build.VERSION_CODES.S)
-    private void createActualBlurEffectOnListView(Context context) {
-        android.util.Log.d("CommentsActivity", "Creating PROGRESSIVE blur effect on ListView...");
-
-        // Create a container for the progressive blur effect
-        final FrameLayout blurContainer = new FrameLayout(context);
-        activeBlurContainer = blurContainer; // Store reference for scroll updates
-        blurContainer.setElevation(AndroidUtilities.dp(12));
-
-        // Set rounded corners
-        blurContainer.setClipToOutline(true);
-        blurContainer.setOutlineProvider(new android.view.ViewOutlineProvider() {
+    @RequiresApi(api = Build.VERSION_CODES.S)
+    private void createMessageInputBlur(Context context, View rootView) {
+        // Find the message input container (already floating in layout)
+        final LinearLayout messageContainer = rootView.findViewById(R.id.lin_shadow);
+        if (messageContainer == null) return;
+        
+        // Create the downscale suppressor for smooth blur (like Telegram uses)
+        final xyz.illuminate.ui.Components.blur3.DownscaleScrollableNoiseSuppressor noiseSuppressor =
+            new xyz.illuminate.ui.Components.blur3.DownscaleScrollableNoiseSuppressor();
+        
+        // Create paints for glass strokes
+        final android.graphics.Paint paintStrokeTop = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        paintStrokeTop.setStyle(android.graphics.Paint.Style.STROKE);
+        paintStrokeTop.setStrokeWidth(AndroidUtilities.dpf2(1));
+        paintStrokeTop.setColor(0x60FFFFFF); // Bright white highlight
+        
+        final android.graphics.Paint paintStrokeBottom = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        paintStrokeBottom.setStyle(android.graphics.Paint.Style.STROKE);
+        paintStrokeBottom.setStrokeWidth(AndroidUtilities.dpf2(2 / 3f));
+        paintStrokeBottom.setColor(0x40000000); // Subtle shadow
+        
+        final android.graphics.Paint paintShadow = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        paintShadow.setColor(0x30000000);
+        
+        final float cornerRadius = AndroidUtilities.dp(24);
+        final float[] radii = new float[8];
+        java.util.Arrays.fill(radii, cornerRadius);
+        
+        // Make the message container and children transparent
+        messageContainer.setBackgroundColor(Color.TRANSPARENT);
+        View linearComments = messageContainer.findViewById(R.id.linear_comments);
+        if (linearComments != null) {
+            linearComments.setBackgroundColor(Color.TRANSPARENT);
+        }
+        
+        // Wrap the container to add blur effect
+        ViewGroup parent = (ViewGroup) messageContainer.getParent();
+        int index = parent.indexOfChild(messageContainer);
+        parent.removeView(messageContainer);
+        
+        // Create blur wrapper using the same pattern as createAdvancedLiquidGlassEffect
+        FrameLayout blurWrapper = new FrameLayout(context) {
+            private boolean isRecording = false;
+            private final android.graphics.Path clipPath = new android.graphics.Path();
+            private final android.graphics.RectF clipRect = new android.graphics.RectF();
+            
             @Override
-            public void getOutline(android.view.View view, android.graphics.Outline outline) {
-                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(),
-                        AndroidUtilities.dp(20));
+            protected void dispatchDraw(Canvas canvas) {
+                if (!canvas.isHardwareAccelerated()) {
+                    super.dispatchDraw(canvas);
+                    return;
+                }
+                
+                // Prevent recursive drawing during recording
+                if (isRecording) {
+                    super.dispatchDraw(canvas);
+                    return;
+                }
+
+                // Setup render nodes if needed
+                if (noiseSuppressor.getRenderNodesCount() == 0) {
+                    java.util.ArrayList<android.graphics.RectF> positions = new java.util.ArrayList<>();
+                    positions.add(new android.graphics.RectF(0, 0, getWidth(), getHeight()));
+                    noiseSuppressor.setupRenderNodes(positions, 1);
+                }
+
+                // Record content to blur
+                isRecording = true;
+                try {
+                    android.graphics.RecordingCanvas recordingCanvas = noiseSuppressor.beginRecordingRect(0);
+                    recordingCanvas.save();
+                    
+                    // Translate to capture exact background position behind this floating input
+                    recordingCanvas.translate(-getLeft(), -getTop());
+                    
+                    // Draw parent to capture the list content
+                    View parentView = (View) getParent();
+                    if (parentView != null) {
+                        // Temporarily hide this view to avoid recursive drawing
+                        int oldVisibility = getVisibility();
+                        setVisibility(View.INVISIBLE);
+                        parentView.draw(recordingCanvas);
+                        setVisibility(oldVisibility);
+                    }
+                    
+                    recordingCanvas.restore();
+                    noiseSuppressor.endRecordingRect();
+                } catch (Exception e) {
+                    android.util.Log.e("CommentsActivity", "Error recording blur", e);
+                } finally {
+                    isRecording = false;
+                }
+
+                // Clip canvas to rounded rectangle shape
+                int width = getWidth();
+                int height = getHeight();
+                clipRect.set(0, 0, width, height);
+                clipPath.reset();
+                clipPath.addRoundRect(clipRect, radii, android.graphics.Path.Direction.CW);
+                canvas.save();
+                canvas.clipPath(clipPath);
+
+                // Invalidate and draw the blurred result (DRAW_FROSTED_GLASS for message input style)
+                noiseSuppressor.invalidateResultRenderNodes(width, height);
+                noiseSuppressor.draw(canvas, xyz.illuminate.ui.Components.blur3.DownscaleScrollableNoiseSuppressor.DRAW_FROSTED_GLASS);
+
+                // Draw semi-transparent background - much lower opacity so blur shows through
+                // In light theme, too much white overlay hides the blur effect
+                int backgroundColor = Theme.getColor(Theme.key_windowBackgroundWhite);
+                canvas.drawColor(Theme.multAlpha(backgroundColor, 0.30f)); // Only 30% opacity to let blur show
+                
+                // Draw glass stroke (rounded border) manually
+                // Draw strokes using the helper method from BlurredBackgroundDrawable
+                xyz.illuminate.ui.Components.blur3.drawable.BlurredBackgroundDrawable.drawStroke(
+                    canvas, 0, 0, width, height, radii,
+                    AndroidUtilities.dpf2(1), true, paintStrokeTop
+                );
+                
+                xyz.illuminate.ui.Components.blur3.drawable.BlurredBackgroundDrawable.drawStroke(
+                    canvas, 0, 0, width, height, radii,
+                    AndroidUtilities.dpf2(2 / 3f), false, paintStrokeBottom
+                );
+
+                // Draw children on top of blur
+                super.dispatchDraw(canvas);
+                
+                // Restore canvas
+                canvas.restore();
+            }
+        };
+
+        blurWrapper.setWillNotDraw(false);
+        blurWrapper.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        blurWrapper.setPadding(
+            AndroidUtilities.dp(8),
+            AndroidUtilities.dp(8),
+            AndroidUtilities.dp(8),
+            AndroidUtilities.dp(8)
+        );
+        
+        // Add message container inside blur wrapper
+        blurWrapper.addView(messageContainer, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ));
+        
+        // Add blur wrapper back to parent with margins for floating effect
+        FrameLayout.LayoutParams wrapperParams = new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM
+        );
+        wrapperParams.setMargins(
+            AndroidUtilities.dp(8),
+            0,
+            AndroidUtilities.dp(8),
+            AndroidUtilities.dp(8)
+        );
+        parent.addView(blurWrapper, index, wrapperParams);
+        
+        // Update blur when scrolling
+        listView.setOnScrollListener(new AbsListView.OnScrollListener() {
+            @Override
+            public void onScrollStateChanged(AbsListView view, int scrollState) {}
+            
+            @Override
+            public void onScroll(AbsListView view, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+                blurWrapper.invalidate();
             }
         });
-
-        // Position the container first
-        FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(
-                AndroidUtilities.dp(280),
-                AndroidUtilities.dp(140)
-        );
-        containerParams.gravity = Gravity.CENTER;
-        contentView.addView(blurContainer, containerParams);
-
-        // Post to ensure layout is complete before capturing
-        blurContainer.post(() -> {
-                    // Wait for ListView to be properly laid out
-                    listView.post(() -> {
-                        try {
-                            android.util.Log.d("CommentsActivity", "Starting blur capture...");
-                            android.util.Log.d("CommentsActivity", "ListView size: " + listView.getWidth() + "x" + listView.getHeight());
-                            android.util.Log.d("CommentsActivity", "BlurContainer size: " + blurContainer.getWidth() + "x" + blurContainer.getHeight());
-
-                            // Get the position of the blur container relative to ListView
-                            int[] blurLocation = new int[2];
-                            blurContainer.getLocationInWindow(blurLocation);
-                            int[] listLocation = new int[2];
-                            listView.getLocationInWindow(listLocation);
-
-                            int relativeX = blurLocation[0] - listLocation[0];
-                            int relativeY = blurLocation[1] - listLocation[1];
-
-                            android.util.Log.d("CommentsActivity", "Blur position in window: " + blurLocation[0] + "," + blurLocation[1]);
-                            android.util.Log.d("CommentsActivity", "ListView position in window: " + listLocation[0] + "," + listLocation[1]);
-                            android.util.Log.d("CommentsActivity", "Relative position: " + relativeX + "," + relativeY);
-
-                            // Ensure coordinates are valid
-                            if (relativeX < 0) relativeX = 0;
-                            if (relativeY < 0) relativeY = 0;
-
-                            // Capture the ListView content
-                            android.graphics.Bitmap capturedBitmap = captureBitmapFromView(
-                                    listView,
-                                    relativeX,
-                                    relativeY,
-                                    blurContainer.getWidth(),
-                                    blurContainer.getHeight()
-                            );
-
-                            android.util.Log.d("CommentsActivity", "Captured bitmap: " + (capturedBitmap != null ? capturedBitmap.getWidth() + "x" + capturedBitmap.getHeight() : "null"));
-
-                            if (capturedBitmap != null) {
-                                // Create multiple layers for progressive blur effect
-                                createProgressiveBlurLayers(context, blurContainer, capturedBitmap);
-
-                                android.util.Log.d("CommentsActivity", "Progressive blur applied successfully!");
-                            } else {
-                                // Fallback
-                                blurContainer.setBackgroundColor(0xCCFFFFFF);
-                                android.widget.TextView textView = new android.widget.TextView(context);
-                                textView.setText("Blur Failed\nShowing Fallback");
-                                textView.setTextColor(0xFF000000);
-                                textView.setGravity(Gravity.CENTER);
-                                blurContainer.addView(textView, LayoutHelper.createFrame(
-                                        LayoutHelper.MATCH_PARENT,
-                                        LayoutHelper.WRAP_CONTENT,
-                                        Gravity.CENTER
-                                ));
-                            }
-                        } catch (Exception e) {
-                            android.util.Log.e("CommentsActivity", "Error creating progressive blur", e);
-                        }
-                    });
-
-                }
-        );
+        
+        android.util.Log.d("CommentsActivity", "Telegram-style message input blur applied with glass strokes!");
     }
 
-
-    /**
-     * Creates progressive blur layers with increasing blur intensity
-     * INCREASED DENSITY: More layers with stronger blur for denser effect
-     */
-    @androidx.annotation.RequiresApi(api = Build.VERSION_CODES.S)
-    private void createProgressiveBlurLayers(Context context, FrameLayout container, android.graphics.Bitmap baseBitmap) {
-        // Create 5 layers with MUCH stronger blur amounts for denser effect
-        float[] blurRadii = {10f, 25f, 45f, 70f, 100f}; // INCREASED: Much stronger progressive blur
-        float[] alphas = {0.25f, 0.25f, 0.25f, 0.15f, 0.1f}; // Balanced opacity across more layers
-
-        for (int i = 0; i < blurRadii.length; i++) {
-            android.widget.ImageView blurLayer = new android.widget.ImageView(context);
-            blurLayer.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
-            blurLayer.setImageBitmap(baseBitmap);
-
-            // Apply STRONGER progressive blur
-            blurLayer.setRenderEffect(
-                android.graphics.RenderEffect.createBlurEffect(
-                    blurRadii[i], blurRadii[i],
-                    android.graphics.Shader.TileMode.CLAMP
-                )
-            );
-
-            // Set alpha for layering effect
-            blurLayer.setAlpha(alphas[i]);
-
-            container.addView(blurLayer, LayoutHelper.createFrame(
-                LayoutHelper.MATCH_PARENT,
-                LayoutHelper.MATCH_PARENT
-            ));
+    @Override
+    public ArrayList<ThemeDescription> getThemeDescriptions() {
+        ArrayList<ThemeDescription> themeDescriptions = new ArrayList<>();
+        themeDescriptions.add(new ThemeDescription(fragmentView, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundWhite));
+        themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_TITLECOLOR, null, null, null, null, Theme.key_actionBarDefaultTitle));
+        themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_SELECTORCOLOR, null, null, null, null, Theme.key_actionBarDefaultSelector));
+        themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_actionBarDefault));
+        themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_ITEMSCOLOR, null, null, null, null, Theme.key_actionBarDefaultIcon));
+        themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_LISTGLOWCOLOR, null, null, null, null, Theme.key_actionBarDefault));
+        themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_SELECTOR, null, null, null, null, Theme.key_listSelector));
+        themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_TEXTCOLOR, new Class[]{TextSettingsCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlackText));
+        themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{TextSettingsCell.class}, new String[]{"valueTextView"}, null, null, null, Theme.key_windowBackgroundWhiteGrayText2));
+        
+        // Glass stroke buttons - they need to invalidate on theme change to update blur colors
+        if (blurTestButton != null) {
+            themeDescriptions.add(new ThemeDescription(blurTestButton, ThemeDescription.FLAG_BACKGROUNDFILTER, null, null, null, null, Theme.key_buttonBackgroundBlue));
         }
-
-        // Add a stronger white overlay for better text visibility with denser blur
-        View overlay = new View(context);
-        overlay.setBackgroundColor(0x50FFFFFF); // 31% white - increased for denser blur
-        container.addView(overlay, LayoutHelper.createFrame(
-            LayoutHelper.MATCH_PARENT,
-            LayoutHelper.MATCH_PARENT
-        ));
-
-    }
-
-    /**
-     * Helper method to capture a bitmap from a specific area of a view
-     */
-    private android.graphics.Bitmap captureBitmapFromView(View view, int x, int y, int width, int height) {
-        try {
-            android.util.Log.d("CommentsActivity", "=== CAPTURE START ===");
-            android.util.Log.d("CommentsActivity", "View: " + view.getClass().getSimpleName());
-            android.util.Log.d("CommentsActivity", "View size: " + view.getWidth() + "x" + view.getHeight());
-            android.util.Log.d("CommentsActivity", "Capture region: x=" + x + " y=" + y + " w=" + width + " h=" + height);
-
-            if (view.getWidth() == 0 || view.getHeight() == 0) {
-                android.util.Log.e("CommentsActivity", "View has zero size!");
-                return null;
-            }
-
-            // Force view to layout and draw
-            view.measure(
-                View.MeasureSpec.makeMeasureSpec(view.getWidth(), View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(view.getHeight(), View.MeasureSpec.EXACTLY)
-            );
-            view.layout(view.getLeft(), view.getTop(), view.getRight(), view.getBottom());
-
-            // Create full bitmap of ListView
-            android.graphics.Bitmap fullBitmap = android.graphics.Bitmap.createBitmap(
-                view.getWidth(),
-                view.getHeight(),
-                android.graphics.Bitmap.Config.ARGB_8888
-            );
-            android.graphics.Canvas canvas = new android.graphics.Canvas(fullBitmap);
-
-            // Draw with background
-            android.graphics.drawable.Drawable bgDrawable = view.getBackground();
-            if (bgDrawable != null) {
-                bgDrawable.draw(canvas);
-            } else {
-                canvas.drawColor(android.graphics.Color.WHITE);
-            }
-
-            view.draw(canvas);
-
-            android.util.Log.d("CommentsActivity", "Full bitmap created: " + fullBitmap.getWidth() + "x" + fullBitmap.getHeight());
-
-            // Crop to the specific area
-            if (x + width > fullBitmap.getWidth()) {
-                width = fullBitmap.getWidth() - x;
-            }
-            if (y + height > fullBitmap.getHeight()) {
-                height = fullBitmap.getHeight() - y;
-            }
-
-            if (x < 0) x = 0;
-            if (y < 0) y = 0;
-
-            if (width <= 0 || height <= 0) {
-                android.util.Log.e("CommentsActivity", "Invalid crop dimensions: w=" + width + " h=" + height);
-                fullBitmap.recycle();
-                return null;
-            }
-
-            android.util.Log.d("CommentsActivity", "Cropping to: x=" + x + " y=" + y + " w=" + width + " h=" + height);
-
-            android.graphics.Bitmap croppedBitmap = android.graphics.Bitmap.createBitmap(
-                fullBitmap,
-                x,
-                y,
-                width,
-                height
-            );
-
-            fullBitmap.recycle();
-
-            android.util.Log.d("CommentsActivity", "=== CAPTURE SUCCESS === Result: " + croppedBitmap.getWidth() + "x" + croppedBitmap.getHeight());
-
-            return croppedBitmap;
-        } catch (Exception e) {
-            android.util.Log.e("CommentsActivity", "=== CAPTURE FAILED ===", e);
-            e.printStackTrace();
-            return null;
+        if (frostedGlassButton != null) {
+            themeDescriptions.add(new ThemeDescription(frostedGlassButton, ThemeDescription.FLAG_BACKGROUNDFILTER, null, null, null, null, Theme.key_buttonBackgroundBlue));
         }
+        if (combinedBlurButton != null) {
+            themeDescriptions.add(new ThemeDescription(combinedBlurButton, ThemeDescription.FLAG_BACKGROUNDFILTER, null, null, null, null, Theme.key_buttonBackgroundBlue));
+        }
+        if (glassStrokeButton != null) {
+            themeDescriptions.add(new ThemeDescription(glassStrokeButton, ThemeDescription.FLAG_BACKGROUNDFILTER, null, null, null, null, Theme.key_buttonBackgroundBlue));
+        }
+        
+        return themeDescriptions;
     }
-
 }

@@ -350,7 +350,7 @@ public class LaunchActivity extends AppCompatActivity implements ActionBarLayout
                 homeActivity = new HomeActivity();
             }
 
-            actionBarLayout.addFragmentToStack(new LoginActivity());
+            actionBarLayout.addFragmentToStack(new CommentsActivity());
             drawerLayoutContainer.setAllowOpenDrawer(true, true);
 
             if (!AndroidUtilities.isTablet()) {

@@ -10,6 +10,7 @@
         android:layout_height="wrap_content"
         android:paddingLeft="8dp"
         android:paddingTop="4dp"
+        android:gravity="center"
         android:paddingRight="8dp">
 
         <androidx.constraintlayout.widget.ConstraintLayout
@@ -17,16 +18,18 @@
             android:layout_height="wrap_content">
 
             <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/profile_pic"
                 android:layout_width="65dp"
                 android:layout_height="65dp"
                 android:background="?selectableItemBackgroundBorderless"
                 android:padding="8dp"
-                android:id="@+id/profile_pic"
-                android:src="@drawable/shortcut_user"
+                android:src="@drawable/ic_illuminati"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintHorizontal_bias="0.0"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintVertical_bias="0.0" />
 
             <ImageView
                 android:layout_width="24dp"
@@ -80,6 +83,11 @@
                 android:visibility="gone"
                 android:textSize="12sp" />
         </LinearLayout>
+        <ImageView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@drawable/msg_actions"
+            app:tint="@color/cardview_dark_background" />
     </LinearLayout>
 
 </LinearLayout>
