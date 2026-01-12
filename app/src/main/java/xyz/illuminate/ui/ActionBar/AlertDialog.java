@@ -7,6 +7,7 @@ import android.animation.ObjectAnimator;
 import android.app.Dialog;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
@@ -29,6 +30,8 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+
+import androidx.annotation.RequiresApi;
 
 import java.util.ArrayList;
 
@@ -111,6 +114,9 @@ public class AlertDialog extends Dialog implements Drawable.Callback {
 
     private Drawable shadowDrawable;
     private Rect backgroundPaddings;
+    
+    private boolean blurEnabled = false;
+    private View blurBehindView;
 
     private boolean focusable;
 
@@ -202,10 +208,24 @@ public class AlertDialog extends Dialog implements Drawable.Callback {
 
         progressViewStyle = progressStyle;
     }
+    
+    @RequiresApi(api = Build.VERSION_CODES.S)
+    private void enableWindowBlur() {
+        if (getWindow() != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getWindow().setBackgroundDrawable(null);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+            getWindow().getAttributes().setBlurBehindRadius(50);
+            getWindow().setDimAmount(0.15f);
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        if (blurEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            enableWindowBlur();
+        }
 
         LinearLayout containerView = new LinearLayout(getContext()) {
 
@@ -404,18 +424,50 @@ public class AlertDialog extends Dialog implements Drawable.Callback {
             @Override
             protected void dispatchDraw(Canvas canvas) {
                 if (drawBackground) {
-                    shadowDrawable.setBounds(0, 0, getMeasuredWidth(), getMeasuredHeight());
-                    if (topView != null && notDrawBackgroundOnTopView) {
-                        int clipTop = topView.getBottom();
-                        canvas.save();
-                        canvas.clipRect(0, clipTop, getMeasuredWidth(), getMeasuredHeight());
-                        shadowDrawable.draw(canvas);
-                        canvas.restore();
+                    if (blurEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        drawBlurredBackground(canvas);
                     } else {
-                        shadowDrawable.draw(canvas);
+                        shadowDrawable.setBounds(0, 0, getMeasuredWidth(), getMeasuredHeight());
+                        if (topView != null && notDrawBackgroundOnTopView) {
+                            int clipTop = topView.getBottom();
+                            canvas.save();
+                            canvas.clipRect(0, clipTop, getMeasuredWidth(), getMeasuredHeight());
+                            shadowDrawable.draw(canvas);
+                            canvas.restore();
+                        } else {
+                            shadowDrawable.draw(canvas);
+                        }
                     }
                 }
                 super.dispatchDraw(canvas);
+            }
+            
+            @RequiresApi(api = Build.VERSION_CODES.S)
+            private void drawBlurredBackground(Canvas canvas) {
+                // Draw semi-transparent background
+                int backgroundColor = getThemedColor(Theme.key_dialogBackground);
+                int alpha = Color.alpha(backgroundColor);
+                int blurBackgroundColor = Color.argb(
+                    Math.min(alpha, 200), // Max alpha for better blur visibility
+                    Color.red(backgroundColor),
+                    Color.green(backgroundColor),
+                    Color.blue(backgroundColor)
+                );
+                canvas.drawColor(blurBackgroundColor);
+                
+                // Draw shadow drawable with reduced opacity
+                shadowDrawable.setAlpha(180);
+                shadowDrawable.setBounds(0, 0, getMeasuredWidth(), getMeasuredHeight());
+                if (topView != null && notDrawBackgroundOnTopView) {
+                    int clipTop = topView.getBottom();
+                    canvas.save();
+                    canvas.clipRect(0, clipTop, getMeasuredWidth(), getMeasuredHeight());
+                    shadowDrawable.draw(canvas);
+                    canvas.restore();
+                } else {
+                    shadowDrawable.draw(canvas);
+                }
+                shadowDrawable.setAlpha(255);
             }
         };
         containerView.setOrientation(LinearLayout.VERTICAL);
@@ -1310,6 +1362,16 @@ public class AlertDialog extends Dialog implements Drawable.Callback {
         public Builder setNeutralButton(CharSequence text, final OnClickListener listener) {
             alertDialog.neutralButtonText = text;
             alertDialog.neutralButtonListener = listener;
+            return this;
+        }
+        
+        public Builder setBlurEnabled(boolean enabled) {
+            alertDialog.blurEnabled = enabled;
+            return this;
+        }
+        
+        public Builder setBlurBehindView(View view) {
+            alertDialog.blurBehindView = view;
             return this;
         }
 

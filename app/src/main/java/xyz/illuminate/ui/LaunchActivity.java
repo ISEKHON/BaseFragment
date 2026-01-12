@@ -331,11 +331,11 @@ public class LaunchActivity extends AppCompatActivity implements ActionBarLayout
             if (id == 2) {
                 Bundle args = new Bundle();
                 actionBarLayout.presentFragment(new DeveloperTools());
-                AndroidUtilities.showToast("");
+                AndroidUtilities.showToast("ok");
                 drawerLayoutContainer.closeDrawer(false);
-            } else if (id == 3) {
-                //presentFragment(new ContactsActivity(null));
-                AndroidUtilities.showToast("opop");
+            } else if (id == 1) {
+                actionBarLayout.presentFragment(new SettingsActivity());
+                AndroidUtilities.showToast("ok1");
                 drawerLayoutContainer.closeDrawer(false);
             }
         });

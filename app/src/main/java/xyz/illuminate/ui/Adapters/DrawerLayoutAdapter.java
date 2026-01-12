@@ -94,7 +94,7 @@ public class DrawerLayoutAdapter extends RecyclerListView.SelectionAdapter {
             return;
         }*/
         items.add(new Item(2, "Developer Tools", R.drawable.photo_tools));
-        items.add(new Item(1, "Tools", R.drawable.tool_blur));
+        items.add(new Item(1, "Settings", R.drawable.tool_blur));
     }
 
     private static class Item {

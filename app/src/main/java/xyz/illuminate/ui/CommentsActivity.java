@@ -1,15 +1,20 @@
 package xyz.illuminate.ui;
 
+import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.net.Uri;
 import android.os.Build;
+import android.provider.MediaStore;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.util.TypedValue;
 import android.view.ActionMode;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -54,6 +59,7 @@ import xyz.illuminate.ui.Components.blur3.drawable.color.BlurredBackgroundColorP
 import xyz.illuminate.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode;
 
 import android.widget.AbsListView;
+import android.widget.TextView;
 
 /**
  * CommentsActivity - Demonstrates the Telegram blur3 system for liquid glass effects
@@ -174,15 +180,25 @@ import android.widget.AbsListView;
  */
 
 public class CommentsActivity extends BaseFragment {
+    private static final int REQUEST_IMAGE_PICK = 1001;
+    
     CommentsAdapter mAdapter;
     ArrayList<HashMap<String, String>> comments = new ArrayList<>();
     LinearLayout container;
     FrameLayout contentView;
     EditTextCaption commentEdit;
     ImageView sendComment;
+    ImageView attachImageButton;
     LinearLayoutManager layoutManager;
     ListView listView;
     FrameLayout activeBlurContainer; // Store blur container for scroll updates
+    
+    // Navigation and message input containers
+    private LinearLayout messageInputContainer;
+    private LinearLayout navigationBarContainer;
+    private ImageView toggleButton;
+    private boolean showingMessageInput = true;
+    private boolean navigationBarBlurApplied = false;
     
     // Glass stroke buttons for theme updates
     private android.widget.Button blurTestButton;
@@ -250,9 +266,6 @@ public class CommentsActivity extends BaseFragment {
         commentEdit.setBackgroundColor(Color.TRANSPARENT);
         commentEdit.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
 
-
-        addSampleComments();
-        addSampleComments();
         addSampleComments();
         
         // Apply Telegram-style blur to message input after layout
@@ -334,7 +347,24 @@ public class CommentsActivity extends BaseFragment {
             }
         });
 
+        // Store reference to message input container
+        messageInputContainer = inflatedView.findViewById(R.id.lin_shadow);
+        
+        // Create navigation bar (initially hidden)
+        createNavigationBar(context, inflatedView);
+        
         ((LinearLayout) inflatedView.findViewById(R.id.comm)).addView(commentEdit, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        // Add attach image button
+        attachImageButton = new ImageView(context);
+        attachImageButton.setImageResource(R.drawable.input_attach);
+        attachImageButton.setImageTintList(ColorStateList.valueOf(Theme.getColor(Theme.key_buttonBackgroundBlue)));
+        attachImageButton.setBackground(Theme.getSelectorDrawable(!Theme.currentTheme.isDark));
+        attachImageButton.setPadding(AndroidUtilities.dp(8), AndroidUtilities.dp(8), AndroidUtilities.dp(8), AndroidUtilities.dp(8));
+        attachImageButton.setOnClickListener(view -> {
+            openImagePicker();
+        });
+        // Don't add here - will be added to button container below
 
         sendComment = inflatedView.findViewById(R.id.sendComment);
         sendComment.setImageTintList(ColorStateList.valueOf(Theme.getColor(Theme.key_buttonBackgroundBlue)));
@@ -342,6 +372,17 @@ public class CommentsActivity extends BaseFragment {
         sendComment.setOnClickListener(view -> {
             sendMessage(commentEdit.getText().toString());
         });
+        
+        // Add toggle button to switch between message input and navigation
+        toggleButton = new ImageView(context);
+        toggleButton.setImageResource(R.drawable.input_bot2);
+        toggleButton.setImageTintList(ColorStateList.valueOf(Theme.getColor(Theme.key_buttonBackgroundBlue)));
+        toggleButton.setBackground(Theme.getSelectorDrawable(!Theme.currentTheme.isDark));
+        toggleButton.setPadding(AndroidUtilities.dp(8), AndroidUtilities.dp(8), AndroidUtilities.dp(8), AndroidUtilities.dp(8));
+        toggleButton.setOnClickListener(view -> {
+            toggleInputView();
+        });
+       // ((LinearLayout) inflatedView.findViewById(R.id.comm)).addView(toggleButton, LayoutHelper.createLinear(AndroidUtilities.dp(48), AndroidUtilities.dp(48)));
         
         // Add a test button
         ImageView testButton = new ImageView(context);
@@ -422,6 +463,8 @@ public class CommentsActivity extends BaseFragment {
         blurButtonParams.gravity = Gravity.CENTER_VERTICAL;
         blurButtonParams.setMargins(AndroidUtilities.dp(4), AndroidUtilities.dp(4), AndroidUtilities.dp(4), AndroidUtilities.dp(4));
         
+        buttonContainer.addView(toggleButton, blurButtonParams);
+         buttonContainer.addView(attachImageButton, blurButtonParams);
         buttonContainer.addView(glassStrokeButton, blurButtonParams);
         buttonContainer.addView(combinedBlurButton, blurButtonParams);
         buttonContainer.addView(frostedGlassButton, blurButtonParams);
@@ -686,6 +729,360 @@ public class CommentsActivity extends BaseFragment {
             android.util.Log.d("CommentsActivity", "Bold-Italic font loaded: " + (boldItalicTypeface != null));
         } catch (Exception e) {
             android.util.Log.e("CommentsActivity", "Error loading fonts", e);
+        }
+    }
+    
+    /**
+     * Opens image picker to select an image from gallery
+     */
+    private void openImagePicker() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+            intent.setType("image/*");
+            getParentActivity().startActivityForResult(intent, REQUEST_IMAGE_PICK);
+        } catch (Exception e) {
+            android.util.Log.e("CommentsActivity", "Error opening image picker", e);
+            AndroidUtilities.showToast("Failed to open image picker");
+        }
+    }
+    
+    /**
+     * Creates navigation bar with blur effect (same style as message input)
+     */
+    private void createNavigationBar(Context context, View rootView) {
+        // Use fragmentView as parent instead of linear_content so we can position at bottom
+        ViewGroup parentView = (ViewGroup) rootView; // rootView is fragmentView (FrameLayout)
+        
+        // Create navigation bar container - transparent, blur wrapper will handle styling
+        navigationBarContainer = new LinearLayout(context);
+        navigationBarContainer.setOrientation(LinearLayout.HORIZONTAL);
+        navigationBarContainer.setGravity(Gravity.CENTER);
+        navigationBarContainer.setBackgroundColor(Color.TRANSPARENT);
+        navigationBarContainer.setPadding(AndroidUtilities.dp(8), AndroidUtilities.dp(8), AndroidUtilities.dp(8), AndroidUtilities.dp(8));
+        navigationBarContainer.setVisibility(View.GONE); // Initially hidden
+        
+        // Initialize toggle state - message input shown by default
+        showingMessageInput = true;
+        
+        // Create icon-based navigation buttons
+        ImageView homeButton = createIconNavButton(context, R.drawable.msg_home, "Home");
+        homeButton.setColorFilter(0xFF007AFF, android.graphics.PorterDuff.Mode.SRC_IN); // Blue color for home
+        homeButton.setOnClickListener(v -> {
+            animateButtonClick(homeButton);
+            AndroidUtilities.showToast("Home clicked");
+        });
+        
+        ImageView libraryButton = createIconNavButton(context, R.drawable.msg_callback, "Library");
+        libraryButton.setOnClickListener(v -> {
+            animateButtonClick(libraryButton);
+            AndroidUtilities.showToast("Library clicked");
+        });
+        
+        ImageView settingsButton = createIconNavButton(context, R.drawable.menu_settings, "Settings");
+        settingsButton.setOnClickListener(v -> {
+            animateButtonClick(settingsButton);
+            toggleInputView(); // Toggle back to message input
+        });
+        
+        // Add buttons to navigation bar with equal weight
+        LinearLayout.LayoutParams navButtonParams = new LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+        );
+        navButtonParams.setMargins(AndroidUtilities.dp(4), 0, AndroidUtilities.dp(4), 0);
+        
+        navigationBarContainer.addView(homeButton, navButtonParams);
+        navigationBarContainer.addView(libraryButton, navButtonParams);
+        navigationBarContainer.addView(settingsButton, navButtonParams);
+        
+        // Add navigation bar to fragmentView (FrameLayout) so it overlays at bottom
+        // Get screen width and set navbar to 70% of screen width
+        android.util.DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
+        int screenWidth = displayMetrics.widthPixels;
+        int navBarWidth = (int) (screenWidth * 0.7f);
+        
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+            navBarWidth,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
+        );
+        params.setMargins(AndroidUtilities.dp(8), 0, AndroidUtilities.dp(8), AndroidUtilities.dp(8));
+        parentView.addView(navigationBarContainer, params);
+    }
+    
+    /**
+     * Creates an icon-based navigation button (iOS style)
+     */
+    private ImageView createIconNavButton(Context context, int iconRes, String contentDescription) {
+        ImageView button = new ImageView(context);
+        button.setImageResource(iconRes);
+        button.setColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), android.graphics.PorterDuff.Mode.SRC_IN);
+        button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        button.setPadding(AndroidUtilities.dp(12), AndroidUtilities.dp(12), AndroidUtilities.dp(12), AndroidUtilities.dp(12));
+        button.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), 1));
+        button.setContentDescription(contentDescription);
+        
+        return button;
+    }
+    
+    /**
+     * Creates a navigation button with icon
+     */
+    private ImageView createNavButton(Context context, int iconRes, String contentDescription) {
+        ImageView button = new ImageView(context);
+        button.setLayoutParams(new ViewGroup.LayoutParams(
+            AndroidUtilities.dp(56),
+            AndroidUtilities.dp(56)
+        ));
+        button.setImageResource(iconRes);
+        // Use solid dark color for maximum visibility
+        button.setColorFilter(0xFF000000, android.graphics.PorterDuff.Mode.SRC_IN);
+        // Add a background to see if button is there
+        button.setBackgroundColor(0x20FF0000); // Light red tint for debugging
+        button.setPadding(AndroidUtilities.dp(12), AndroidUtilities.dp(12), AndroidUtilities.dp(12), AndroidUtilities.dp(12));
+        button.setContentDescription(contentDescription);
+        button.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        
+        android.util.Log.d("CommentsActivity", "Creating nav button: " + contentDescription + " with icon: " + iconRes);
+        
+        return button;
+    }
+    
+    /**
+     * Animates button click with scale and alpha effect
+     */
+    private void animateButtonClick(View button) {
+        button.animate()
+            .scaleX(0.85f)
+            .scaleY(0.85f)
+            .alpha(0.6f)
+            .setDuration(100)
+            .withEndAction(() -> {
+                button.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .alpha(1f)
+                    .setDuration(100)
+                    .start();
+            })
+            .start();
+    }
+    
+    /**
+     * Toggles between message input and navigation bar
+     */
+    private void toggleInputView() {
+        showingMessageInput = !showingMessageInput;
+        
+        if (showingMessageInput) {
+            // Show message input, hide navigation bar
+            navigationBarContainer.setVisibility(View.GONE);
+            
+            // Hide the navigation bar wrapper (the blur wrapper if applied)
+            View navBarParent = (View) navigationBarContainer.getParent();
+            if (navBarParent != null && navBarParent != fragmentView) {
+                navBarParent.setVisibility(View.GONE);
+            }
+            
+            // Show the message input container directly (blur is a drawable now, not a wrapper)
+            messageInputContainer.setVisibility(View.VISIBLE);
+            messageInputContainer.setAlpha(0f);
+            messageInputContainer.animate().alpha(1f).setDuration(200).start();
+            
+            toggleButton.setImageResource(R.drawable.input_bot2);
+        } else {
+            // Hide message input, show navigation bar
+            messageInputContainer.setVisibility(View.GONE);
+            
+            // Show navigation bar container first
+            navigationBarContainer.setVisibility(View.VISIBLE);
+            
+            // Show the navigation bar wrapper (the blur wrapper if applied)
+            View navBarParent = (View) navigationBarContainer.getParent();
+            if (navBarParent != null && navBarParent != fragmentView) {
+                navBarParent.setVisibility(View.VISIBLE);
+                navBarParent.setAlpha(0f);
+                navBarParent.animate().alpha(1f).setDuration(200).start();
+            } else {
+                // If not wrapped yet, animate the navbar directly
+                navigationBarContainer.setAlpha(0f);
+                navigationBarContainer.animate().alpha(1f).setDuration(200).start();
+            }
+            
+            toggleButton.setImageResource(R.drawable.input_keyboard);
+            
+            // Apply blur to navigation bar
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                applyBlurToNavigationBar(navigationBarContainer);
+            }
+        }
+    }
+    
+    /**
+     * Applies Telegram-style blur to navigation bar (same as message input)
+     */
+    @RequiresApi(api = Build.VERSION_CODES.S)
+    private void applyBlurToNavigationBar(View navBar) {
+        // Check if blur has already been applied
+        if (navigationBarBlurApplied) {
+            return;
+        }
+        
+        ViewGroup parent = (ViewGroup) navBar.getParent();
+        if (parent == null) return;
+        
+        // Remove from parent
+        int index = parent.indexOfChild(navBar);
+        ViewGroup.LayoutParams originalParams = navBar.getLayoutParams();
+        parent.removeView(navBar);
+        
+        // Create blur wrapper (same pattern as message input)
+        final xyz.illuminate.ui.Components.blur3.DownscaleScrollableNoiseSuppressor noiseSuppressor =
+            new xyz.illuminate.ui.Components.blur3.DownscaleScrollableNoiseSuppressor();
+        
+        final android.graphics.Paint paintStrokeTop = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        paintStrokeTop.setStyle(android.graphics.Paint.Style.STROKE);
+        paintStrokeTop.setStrokeWidth(AndroidUtilities.dpf2(1));
+        paintStrokeTop.setColor(0x60FFFFFF);
+        
+        final android.graphics.Paint paintStrokeBottom = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        paintStrokeBottom.setStyle(android.graphics.Paint.Style.STROKE);
+        paintStrokeBottom.setStrokeWidth(AndroidUtilities.dpf2(2 / 3f));
+        paintStrokeBottom.setColor(0x40000000);
+        
+        final android.graphics.Paint paintShadow = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        paintShadow.setColor(0x30000000);
+        
+        final float cornerRadius = AndroidUtilities.dp(50);
+        final float[] radii = new float[8];
+        java.util.Arrays.fill(radii, cornerRadius);
+        
+        FrameLayout blurWrapper = new FrameLayout(navBar.getContext()) {
+            private boolean isRecording = false;
+            private final android.graphics.Path clipPath = new android.graphics.Path();
+            private final android.graphics.RectF clipRect = new android.graphics.RectF();
+            
+            @Override
+            protected void dispatchDraw(Canvas canvas) {
+                if (!canvas.isHardwareAccelerated()) {
+                    super.dispatchDraw(canvas);
+                    return;
+                }
+                
+                if (isRecording) {
+                    return;
+                }
+
+                if (noiseSuppressor.getRenderNodesCount() == 0) {
+                    java.util.ArrayList<android.graphics.RectF> positions = new java.util.ArrayList<>();
+                    positions.add(new android.graphics.RectF(0, 0, getWidth(), getHeight()));
+                    noiseSuppressor.setupRenderNodes(positions, 1);
+                }
+
+                    isRecording = true;
+                try {
+                    android.graphics.RecordingCanvas recordingCanvas = noiseSuppressor.beginRecordingRect(0);
+                    recordingCanvas.save();
+                    recordingCanvas.translate(-getLeft(), -getTop());
+                    View parentView = (View) getParent();
+                    if (parentView != null) {
+                        int oldVisibility = getVisibility();
+                        setVisibility(View.INVISIBLE);
+                        parentView.draw(recordingCanvas);
+                        setVisibility(oldVisibility);
+                    }
+                    recordingCanvas.restore();
+                    noiseSuppressor.endRecordingRect();
+                } catch (Exception e) {
+                    android.util.Log.e("CommentsActivity", "Error recording blur", e);
+                } finally {
+                    isRecording = false;
+                }
+
+                int width = getWidth();
+                int height = getHeight();
+                clipRect.set(0, 0, width, height);
+                clipPath.reset();
+                clipPath.addRoundRect(clipRect, radii, android.graphics.Path.Direction.CW);
+                canvas.save();
+                canvas.clipPath(clipPath);
+
+                noiseSuppressor.invalidateResultRenderNodes(width, height);
+                noiseSuppressor.draw(canvas, xyz.illuminate.ui.Components.blur3.DownscaleScrollableNoiseSuppressor.DRAW_FROSTED_GLASS);
+
+                // Draw semi-transparent background - 30% opacity same as message input
+                int backgroundColor = Theme.getColor(Theme.key_windowBackgroundWhite);
+                canvas.drawColor(Theme.multAlpha(backgroundColor, 0.30f));
+                
+                // Draw glass strokes using helper method
+                xyz.illuminate.ui.Components.blur3.drawable.BlurredBackgroundDrawable.drawStroke(
+                    canvas, 0, 0, width, height, radii,
+                    AndroidUtilities.dpf2(1), true, paintStrokeTop
+                );
+                
+                xyz.illuminate.ui.Components.blur3.drawable.BlurredBackgroundDrawable.drawStroke(
+                    canvas, 0, 0, width, height, radii,
+                    AndroidUtilities.dpf2(2 / 3f), false, paintStrokeBottom
+                );
+
+                super.dispatchDraw(canvas);
+                canvas.restore();
+            }
+        };
+
+        blurWrapper.setWillNotDraw(false);
+        blurWrapper.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        blurWrapper.setPadding(
+            AndroidUtilities.dp(5),
+            AndroidUtilities.dp(5),
+            AndroidUtilities.dp(5),
+            AndroidUtilities.dp(5)
+        );
+        
+        blurWrapper.addView(navBar, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ));
+        
+        parent.addView(blurWrapper, index, originalParams);
+        
+        // Mark blur as applied
+        navigationBarBlurApplied = true;
+    }
+    
+    /**
+     * Handles the result from image picker
+     */
+    @Override
+    public void onActivityResultFragment(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQUEST_IMAGE_PICK && resultCode == Activity.RESULT_OK && data != null) {
+            Uri imageUri = data.getData();
+            if (imageUri != null) {
+                sendImageComment(imageUri);
+            }
+        }
+    }
+    
+    /**
+     * Sends a comment with an image
+     */
+    private void sendImageComment(Uri imageUri) {
+        try {
+            HashMap<String, String> draft = new HashMap<>();
+            draft.put("message", ""); // Empty message for image-only comments
+            draft.put("type", String.valueOf(2)); // Type 2 for image comments
+            draft.put("imageUri", imageUri.toString());
+            
+            comments.add(draft);
+            listView.setAdapter(new CommentsAdapter(this, comments));
+            ((BaseAdapter) listView.getAdapter()).notifyDataSetChanged();
+            
+            // Scroll to the new comment
+            listView.smoothScrollToPosition(comments.size() - 1);
+            
+            AndroidUtilities.showToast("Image added to comments");
+        } catch (Exception e) {
+            android.util.Log.e("CommentsActivity", "Error sending image comment", e);
+            AndroidUtilities.showToast("Failed to add image");
         }
     }
 
@@ -1396,41 +1793,27 @@ public class CommentsActivity extends BaseFragment {
         final float[] radii = new float[8];
         java.util.Arrays.fill(radii, cornerRadius);
         
-        // Make the message container and children transparent
-        messageContainer.setBackgroundColor(Color.TRANSPARENT);
-        View linearComments = messageContainer.findViewById(R.id.linear_comments);
-        if (linearComments != null) {
-            linearComments.setBackgroundColor(Color.TRANSPARENT);
-        }
-        
-        // Wrap the container to add blur effect
-        ViewGroup parent = (ViewGroup) messageContainer.getParent();
-        int index = parent.indexOfChild(messageContainer);
-        parent.removeView(messageContainer);
-        
-        // Create blur wrapper using the same pattern as createAdvancedLiquidGlassEffect
-        FrameLayout blurWrapper = new FrameLayout(context) {
+        // Set blur as background drawable instead of wrapping - this doesn't interfere with EditText
+        android.graphics.drawable.Drawable blurDrawable = new android.graphics.drawable.Drawable() {
             private boolean isRecording = false;
             private final android.graphics.Path clipPath = new android.graphics.Path();
             private final android.graphics.RectF clipRect = new android.graphics.RectF();
             
             @Override
-            protected void dispatchDraw(Canvas canvas) {
+            public void draw(Canvas canvas) {
                 if (!canvas.isHardwareAccelerated()) {
-                    super.dispatchDraw(canvas);
                     return;
                 }
                 
-                // Prevent recursive drawing during recording
                 if (isRecording) {
-                    super.dispatchDraw(canvas);
                     return;
                 }
 
                 // Setup render nodes if needed
                 if (noiseSuppressor.getRenderNodesCount() == 0) {
                     java.util.ArrayList<android.graphics.RectF> positions = new java.util.ArrayList<>();
-                    positions.add(new android.graphics.RectF(0, 0, getWidth(), getHeight()));
+                    android.graphics.Rect bounds = getBounds();
+                    positions.add(new android.graphics.RectF(bounds));
                     noiseSuppressor.setupRenderNodes(positions, 1);
                 }
 
@@ -1440,17 +1823,18 @@ public class CommentsActivity extends BaseFragment {
                     android.graphics.RecordingCanvas recordingCanvas = noiseSuppressor.beginRecordingRect(0);
                     recordingCanvas.save();
                     
-                    // Translate to capture exact background position behind this floating input
-                    recordingCanvas.translate(-getLeft(), -getTop());
+                    // Translate to capture background behind message container
+                    int[] location = new int[2];
+                    messageContainer.getLocationOnScreen(location);
+                    recordingCanvas.translate(-messageContainer.getLeft(), -messageContainer.getTop());
                     
                     // Draw parent to capture the list content
-                    View parentView = (View) getParent();
+                    View parentView = (View) messageContainer.getParent();
                     if (parentView != null) {
-                        // Temporarily hide this view to avoid recursive drawing
-                        int oldVisibility = getVisibility();
-                        setVisibility(View.INVISIBLE);
+                        int oldVisibility = messageContainer.getVisibility();
+                        messageContainer.setVisibility(View.INVISIBLE);
                         parentView.draw(recordingCanvas);
-                        setVisibility(oldVisibility);
+                        messageContainer.setVisibility(oldVisibility);
                     }
                     
                     recordingCanvas.restore();
@@ -1462,71 +1846,55 @@ public class CommentsActivity extends BaseFragment {
                 }
 
                 // Clip canvas to rounded rectangle shape
-                int width = getWidth();
-                int height = getHeight();
-                clipRect.set(0, 0, width, height);
+                android.graphics.Rect bounds = getBounds();
+                clipRect.set(bounds);
                 clipPath.reset();
                 clipPath.addRoundRect(clipRect, radii, android.graphics.Path.Direction.CW);
                 canvas.save();
                 canvas.clipPath(clipPath);
 
-                // Invalidate and draw the blurred result (DRAW_FROSTED_GLASS for message input style)
-                noiseSuppressor.invalidateResultRenderNodes(width, height);
+                // Draw the blurred result
+                noiseSuppressor.invalidateResultRenderNodes(bounds.width(), bounds.height());
                 noiseSuppressor.draw(canvas, xyz.illuminate.ui.Components.blur3.DownscaleScrollableNoiseSuppressor.DRAW_FROSTED_GLASS);
 
-                // Draw semi-transparent background - much lower opacity so blur shows through
-                // In light theme, too much white overlay hides the blur effect
+                // Draw semi-transparent background
                 int backgroundColor = Theme.getColor(Theme.key_windowBackgroundWhite);
-                canvas.drawColor(Theme.multAlpha(backgroundColor, 0.30f)); // Only 30% opacity to let blur show
+                canvas.drawColor(Theme.multAlpha(backgroundColor, 0.30f));
                 
-                // Draw glass stroke (rounded border) manually
-                // Draw strokes using the helper method from BlurredBackgroundDrawable
+                // Draw glass strokes
                 xyz.illuminate.ui.Components.blur3.drawable.BlurredBackgroundDrawable.drawStroke(
-                    canvas, 0, 0, width, height, radii,
+                    canvas, 0, 0, bounds.width(), bounds.height(), radii,
                     AndroidUtilities.dpf2(1), true, paintStrokeTop
                 );
                 
                 xyz.illuminate.ui.Components.blur3.drawable.BlurredBackgroundDrawable.drawStroke(
-                    canvas, 0, 0, width, height, radii,
+                    canvas, 0, 0, bounds.width(), bounds.height(), radii,
                     AndroidUtilities.dpf2(2 / 3f), false, paintStrokeBottom
                 );
 
-                // Draw children on top of blur
-                super.dispatchDraw(canvas);
-                
-                // Restore canvas
                 canvas.restore();
             }
+            
+            @Override
+            public void setAlpha(int alpha) {}
+            
+            @Override
+            public void setColorFilter(android.graphics.ColorFilter colorFilter) {}
+            
+            @Override
+            public int getOpacity() {
+                return android.graphics.PixelFormat.TRANSLUCENT;
+            }
         };
-
-        blurWrapper.setWillNotDraw(false);
-        blurWrapper.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-        blurWrapper.setPadding(
-            AndroidUtilities.dp(8),
-            AndroidUtilities.dp(8),
-            AndroidUtilities.dp(8),
-            AndroidUtilities.dp(8)
-        );
         
-        // Add message container inside blur wrapper
-        blurWrapper.addView(messageContainer, new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT
-        ));
+        messageContainer.setBackground(blurDrawable);
+        messageContainer.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         
-        // Add blur wrapper back to parent with margins for floating effect
-        FrameLayout.LayoutParams wrapperParams = new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.BOTTOM
-        );
-        wrapperParams.setMargins(
-            AndroidUtilities.dp(8),
-            0,
-            AndroidUtilities.dp(8),
-            AndroidUtilities.dp(8)
-        );
-        parent.addView(blurWrapper, index, wrapperParams);
+        // Make inner views transparent
+        View linearComments = messageContainer.findViewById(R.id.linear_comments);
+        if (linearComments != null) {
+            linearComments.setBackgroundColor(Color.TRANSPARENT);
+        }
         
         // Update blur when scrolling
         listView.setOnScrollListener(new AbsListView.OnScrollListener() {
@@ -1535,11 +1903,11 @@ public class CommentsActivity extends BaseFragment {
             
             @Override
             public void onScroll(AbsListView view, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
-                blurWrapper.invalidate();
+                messageContainer.invalidate();
             }
         });
         
-        android.util.Log.d("CommentsActivity", "Telegram-style message input blur applied with glass strokes!");
+        android.util.Log.d("CommentsActivity", "Telegram-style blur applied as background drawable!");
     }
 
     @Override

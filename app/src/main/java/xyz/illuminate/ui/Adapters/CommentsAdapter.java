@@ -1,5 +1,7 @@
 package xyz.illuminate.ui.Adapters;
 
+import android.net.Uri;
+import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -26,6 +28,7 @@ public class CommentsAdapter extends BaseAdapter {
     TextView user_name;
     TextView textView_error;
     ImageView userBadge;
+    ImageView comment_image;
 
     public CommentsAdapter(CommentsActivity commentsActivity, ArrayList<HashMap<String, String>> data) {
         mData = data;
@@ -59,12 +62,44 @@ public class CommentsAdapter extends BaseAdapter {
         profile_pic = content.findViewById(R.id.profile_pic);
         userBadge = content.findViewById(R.id.badge);
         textView_error = content.findViewById(R.id.error);
+        comment_image = content.findViewById(R.id.comment_image);
+        
         content.setBackground(Theme.getSelectorDrawable(Theme.currentTheme.isDark));
         comment_text.setPadding(comment_text.getPaddingLeft(), comment_text.getPaddingTop(), comment_text.getPaddingRight(), AndroidUtilities.dp(8));
         user_name.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
         comment_text.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
 
-        comment_text.setSpanText(mData.get(i).get("message"));
+        HashMap<String, String> commentData = mData.get(i);
+        String type = commentData.get("type");
+        String message = commentData.get("message");
+        String imageUri = commentData.get("imageUri");
+        
+        // Handle text comments (type 1)
+        if ("1".equals(type) || type == null) {
+            comment_text.setVisibility(View.VISIBLE);
+            comment_image.setVisibility(View.GONE);
+            comment_text.setSpanText(message);
+        }
+        // Handle image comments (type 2)
+        else if ("2".equals(type)) {
+            if (!TextUtils.isEmpty(imageUri)) {
+                comment_image.setVisibility(View.VISIBLE);
+                comment_image.setImageURI(Uri.parse(imageUri));
+                
+                // Show message if exists, otherwise hide
+                if (!TextUtils.isEmpty(message)) {
+                    comment_text.setVisibility(View.VISIBLE);
+                    comment_text.setSpanText(message);
+                } else {
+                    comment_text.setVisibility(View.GONE);
+                }
+            } else {
+                comment_text.setVisibility(View.VISIBLE);
+                comment_image.setVisibility(View.GONE);
+                comment_text.setSpanText("[Image not available]");
+            }
+        }
+        
         return content;
     }
 }
